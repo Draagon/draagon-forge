@@ -1,4 +1,4 @@
-# REQ-028: Draagon Forge Sidebar & Real-Time Inspector
+# REQ-030: Draagon Forge Sidebar & Real-Time Inspector
 
 **Priority:** P0
 **Status:** Draft

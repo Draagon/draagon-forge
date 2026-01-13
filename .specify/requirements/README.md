@@ -110,6 +110,30 @@ Each REQ document follows spec kit standards with:
 | **Claude Code Integration** | Bridge Claude subagents/skills with draagon-ai | Hybrid intelligence, feedback loops |
 | **Multi-Model Cost Optimization** | Tiered LLM routing (Groq → Sonnet → Opus) | ~90% cost reduction, quality preserved |
 
+### Phase 7: Sidebar, Inspector & Knowledge Ecosystem
+
+> **Key Innovation:** Real-time visibility into Forge operations, comprehensive account management,
+> and automated knowledge ingestion from GitHub repositories and project documentation.
+>
+> **Focus:** Developer experience, transparency, and bootstrapping the knowledge base.
+
+| REQ ID | Feature | Priority | Complexity | Status |
+|--------|---------|----------|------------|--------|
+| [REQ-029](./REQ-029-account-knowledge-ecosystem.md) | Account & Knowledge Ecosystem | P0-P2 | Medium-High | **Planned** |
+| [REQ-030](./REQ-030-sidebar-inspector.md) | Sidebar & Real-Time Inspector | P0-P1 | Medium | **Phase 1-2 Implemented** |
+
+**Key Capabilities:**
+
+| Capability | Description | Differentiator |
+|------------|-------------|----------------|
+| **Real-Time Inspector** | WebSocket-based event streaming of MCP calls | See exactly what Forge is doing |
+| **Memory Browser** | Tree view of beliefs, insights, skills | Browse and manage semantic memory |
+| **Account Display** | Claude account + Forge identity | Trust and transparency |
+| **Usage Tracking** | Token consumption per model, session costs | Cost awareness |
+| **Knowledge Import** | Import CLAUDE.md, docs as beliefs | Bootstrap knowledge base |
+| **GitHub Monitoring** | Track repos, auto-sync on changes | Killer feature for learning |
+| **Multi-Account** | Switch between personal/org accounts | Team/enterprise support |
+
 ---
 
 ## The Semantic Advantage
@@ -183,6 +207,12 @@ graph TD
     REQ001 --> REQ028[REQ-028: Multi-Model Cost Optimization]
     REQ027 --> REQ028
 
+    %% Phase 7: Sidebar & Knowledge Ecosystem
+    REQ002 --> REQ030[REQ-030: Sidebar & Inspector]
+    REQ001 --> REQ030
+    REQ030 --> REQ029[REQ-029: Account & Knowledge]
+    REQ012 --> REQ029
+
     style REQ014 fill:#f9f,stroke:#333,stroke-width:2px
     style REQ015 fill:#bbf,stroke:#333
     style REQ016 fill:#bbf,stroke:#333
@@ -198,6 +228,8 @@ graph TD
     style REQ026 fill:#fbb,stroke:#333
     style REQ027 fill:#fbf,stroke:#333,stroke-width:2px
     style REQ028 fill:#ff9,stroke:#333,stroke-width:2px
+    style REQ029 fill:#9ff,stroke:#333,stroke-width:2px
+    style REQ030 fill:#9ff,stroke:#333
 ```
 
 **Critical Path:** REQ-001 → REQ-002 → REQ-003/REQ-004 → REQ-005/REQ-006
@@ -209,6 +241,8 @@ graph TD
 **Phase 6 Path:** REQ-001 + REQ-022 → REQ-023 → REQ-024/REQ-025; REQ-022 → REQ-026
 
 **Integration Path:** REQ-001 + REQ-022 + REQ-023 → REQ-027 (Claude Code Bridge)
+
+**Phase 7 Path:** REQ-001 + REQ-002 → REQ-030 → REQ-029 (Sidebar → Knowledge Ecosystem)
 
 ---
 
@@ -282,6 +316,27 @@ graph TD
 - Feedback loops close within 5 seconds
 - ~90% cost reduction via intelligent model routing
 
+### Phase 7: Sidebar & Knowledge Ecosystem (Est. 25 days)
+
+> **Key Innovation:** Complete developer experience with real-time visibility into Forge operations,
+> knowledge bootstrapping from existing documentation and GitHub repositories.
+
+| Sub-phase | Requirements | Effort | Focus |
+|-----------|--------------|--------|-------|
+| 7.1: Inspector & Memory | REQ-030 (Phase 1-2) | 5 days | Real-time events, memory browser |
+| 7.2: Behavior Views | REQ-030 (Phase 3-4) | 5 days | Behavior registry, agent monitor |
+| 7.3: Account & Usage | REQ-029 (Phase 1-2) | 5 days | Account display, token tracking |
+| 7.4: Knowledge Import | REQ-029 (Phase 3) | 4 days | CLAUDE.md parsing, doc ingestion |
+| 7.5: GitHub Monitoring | REQ-029 (Phase 4) | 6 days | Repo tracking, auto-sync |
+
+**Expected Outcomes:**
+- Real-time visibility into all MCP tool calls
+- Browse and manage beliefs/insights via tree view
+- See Claude account status and Forge identity
+- Track token usage and estimated costs
+- Bootstrap knowledge from CLAUDE.md files
+- Auto-learn from tracked GitHub repositories
+
 #### Phase 5 Expected Outcomes:
 - ~47% reduction in MCP token usage
 - Improved context relevance (>85%)
@@ -325,6 +380,13 @@ All requirements validated against Draagon Forge constitution:
 | **Prompt Evolution Improvement** | **>20%** | **REQ-024** |
 | **Swarm Speedup vs Sequential** | **>40%** | **REQ-025** |
 | **Learning Extraction Rate** | **>70%** | **REQ-026** |
+| **Cost Reduction vs Baseline** | **>80%** | **REQ-028** |
+| **FAST Tier Usage Rate** | **>70%** | **REQ-028** |
+| **Escalation Rate** | **<20%** | **REQ-028** |
+| **Inspector Event Latency** | **<100ms** | **REQ-030** |
+| **Memory Browser Refresh** | **<500ms** | **REQ-030** |
+| **Knowledge Import Accuracy** | **>85%** | **REQ-029** |
+| **GitHub Sync Success Rate** | **>95%** | **REQ-029** |
 
 ---
 
@@ -369,6 +431,9 @@ All requirements validated against Draagon Forge constitution:
 | REQ-025 | `SharedWorkingMemory`, `TransactiveMemory` | Extend & wrap |
 | REQ-026 | `Learning`, `LearningChannel`, `TransactiveMemory` | Wrap with MCP tools |
 | REQ-027 | `Agent`, `Behavior`, `BehaviorRegistry`, `MultiAgent` | Bridge to Claude Code |
+| REQ-028 | `llm/providers/`, `llm/router.py` | New implementation for model routing |
+| REQ-029 | `IdentityManager`, `HierarchicalScope`, `DocumentIngestionOrchestrator` | Account/knowledge ecosystem |
+| REQ-030 | `EventBus`, `MemoryProvider` | Sidebar/inspector UI |
 
 ### Draagon Forge Extensions (New)
 
@@ -419,3 +484,4 @@ From the Context Engineering framework, every technique fits into **Reduce** or 
 **Document Status:** Active
 **Maintainer:** Draagon Forge team
 **Last Review:** 2026-01-13
+**Last Updated:** 2026-01-13 (Added Phase 7: REQ-029, REQ-030)
