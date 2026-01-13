@@ -4,6 +4,7 @@
 
 import * as vscode from 'vscode';
 import { ForgeAPIClient } from '../api/client';
+import { AccountViewProvider } from '../providers/AccountViewProvider';
 import { MemoryViewProvider } from '../providers/MemoryViewProvider';
 
 /**
@@ -38,6 +39,7 @@ interface MemoryItem {
  * @param _mcpClient - The MCP client for context tools (optional, reserved for future use)
  * @param panelManager - The panel manager instance
  * @param memoryViewProvider - The memory tree view provider
+ * @param accountViewProvider - The account webview provider
  * @returns Array of disposables for registered commands
  */
 export function registerCommands(
@@ -45,7 +47,8 @@ export function registerCommands(
     apiClient: ForgeAPIClient,
     _mcpClient: unknown,
     panelManager: IPanelManager,
-    memoryViewProvider?: MemoryViewProvider
+    memoryViewProvider?: MemoryViewProvider,
+    accountViewProvider?: AccountViewProvider
 ): vscode.Disposable[] {
     return [
         // Open main chat panel
@@ -353,6 +356,18 @@ export function registerCommands(
                     vscode.window.showInformationMessage(`Weakened belief: -8% conviction`);
                     await memoryViewProvider.refresh();
                 }
+            }
+        }),
+
+        // =================================================================
+        // Account Commands
+        // =================================================================
+
+        // Refresh account
+        vscode.commands.registerCommand('draagon-forge.refreshAccount', async () => {
+            if (accountViewProvider) {
+                await accountViewProvider.refresh();
+                vscode.window.showInformationMessage('Account info refreshed');
             }
         }),
     ];

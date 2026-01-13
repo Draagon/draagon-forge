@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from draagon_forge.api.routes import router
 from draagon_forge.api.websocket import router as ws_router
+from draagon_forge.api.account import router as account_router
 from draagon_forge.mcp.config import config
 
 # Configure logging
@@ -91,6 +92,9 @@ def create_app() -> FastAPI:
 
     # Include WebSocket routes for real-time events
     app.include_router(ws_router)
+
+    # Include account routes
+    app.include_router(account_router)
 
     return app
 

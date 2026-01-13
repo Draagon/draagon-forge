@@ -108,6 +108,12 @@
                 "command": "draagon-forge.weakenBelief",
                 "title": "Draagon Forge: Weaken Belief (-8%)",
                 "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.refreshAccount",
+                "title": "Draagon Forge: Refresh Account",
+                "category": "Draagon Forge",
+                "icon": "$(refresh)"
             }
         ],
         "viewsContainers": {
@@ -121,6 +127,11 @@
         },
         "views": {
             "draagon-forge": [
+                {
+                    "type": "webview",
+                    "id": "draagon-forge.accountView",
+                    "name": "Account"
+                },
                 {
                     "type": "webview",
                     "id": "draagon-forge.chatView",
