@@ -96,6 +96,7 @@ Each REQ document follows spec kit standards with:
 | [REQ-024](./REQ-024-behavior-evolution.md) | Behavior Evolution | P1 | High | Planned |
 | [REQ-025](./REQ-025-cognitive-swarm.md) | Cognitive Swarm Orchestration | P1 | High | Planned |
 | [REQ-026](./REQ-026-metacognitive-reflection.md) | Metacognitive Reflection | P1 | Medium | Planned |
+| [REQ-027](./REQ-027-claude-code-integration.md) | Claude Code Integration | P0 | High | Planned |
 
 **Key Capabilities:**
 
@@ -105,6 +106,7 @@ Each REQ document follows spec kit standards with:
 | **Behavior Evolution** | Self-improving prompts via genetic algorithms | Learns from outcomes automatically |
 | **Cognitive Swarm** | Multi-agent coordination with shared memory | Parallel execution, belief reconciliation |
 | **Metacognitive Reflection** | Automatic post-task learning | Patterns extracted, expertise updated |
+| **Claude Code Integration** | Bridge Claude subagents/skills with draagon-ai | Hybrid intelligence, feedback loops |
 
 ---
 
@@ -170,6 +172,11 @@ graph TD
     REQ001 --> REQ026[REQ-026: Metacognitive Reflection]
     REQ022 --> REQ026
 
+    %% Claude Code Integration (bridges everything)
+    REQ001 --> REQ027[REQ-027: Claude Code Integration]
+    REQ022 --> REQ027
+    REQ023 --> REQ027
+
     style REQ014 fill:#f9f,stroke:#333,stroke-width:2px
     style REQ015 fill:#bbf,stroke:#333
     style REQ016 fill:#bbf,stroke:#333
@@ -183,6 +190,7 @@ graph TD
     style REQ024 fill:#fbb,stroke:#333
     style REQ025 fill:#fbb,stroke:#333
     style REQ026 fill:#fbb,stroke:#333
+    style REQ027 fill:#fbf,stroke:#333,stroke-width:2px
 ```
 
 **Critical Path:** REQ-001 → REQ-002 → REQ-003/REQ-004 → REQ-005/REQ-006
@@ -192,6 +200,8 @@ graph TD
 **Phase 5b Path:** REQ-016 → REQ-020 → REQ-022; REQ-018 → REQ-021 → REQ-022
 
 **Phase 6 Path:** REQ-001 + REQ-022 → REQ-023 → REQ-024/REQ-025; REQ-022 → REQ-026
+
+**Integration Path:** REQ-001 + REQ-022 + REQ-023 → REQ-027 (Claude Code Bridge)
 
 ---
 
@@ -239,10 +249,12 @@ graph TD
 | 5b.2: Priming | REQ-021 | 4 days | Dynamic context assembly, success weighting |
 | 5b.3: Multi-Agent | REQ-022 | 5 days | Finding publication, expertise routing |
 
-### Phase 6: Self-Improvement & Multi-Agent (Est. 35 days)
+### Phase 6: Self-Improvement & Multi-Agent (Est. 47 days)
 
 > **Key Innovation:** This phase makes Draagon Forge **self-improving**. Unlike static AI tools,
 > behaviors evolve based on outcomes and new capabilities can be created through conversation.
+> **Claude Code Integration** bridges the gap between Claude's native capabilities and draagon-ai's
+> sophisticated agent system.
 
 | Sub-phase | Requirements | Effort | Focus |
 |-----------|--------------|--------|-------|
@@ -250,12 +262,15 @@ graph TD
 | 6.2: Evolution | REQ-024 | 8 days | Self-improving prompts |
 | 6.3: Cognitive Swarm | REQ-025 | 10 days | Multi-agent coordination |
 | 6.4: Reflection | REQ-026 | 5 days | Automatic post-task learning |
+| 6.5: Claude Integration | REQ-027 | 12 days | Bridge Claude subagents/skills with draagon-ai |
 
 **Expected Outcomes:**
 - Create new agents through natural conversation
 - Behaviors improve automatically with use (>20% improvement over time)
 - Multi-agent tasks complete faster than sequential (>40% speedup)
 - Automatic learning extraction (>70% of insights captured)
+- Hybrid Claude/draagon-ai agents with expertise routing (>75% accuracy)
+- Feedback loops close within 5 seconds
 
 #### Phase 5 Expected Outcomes:
 - ~47% reduction in MCP token usage
@@ -343,6 +358,7 @@ All requirements validated against Draagon Forge constitution:
 | REQ-024 | `docs/design/BEHAVIOR_SYSTEM_DESIGN.md` | Implement from design |
 | REQ-025 | `SharedWorkingMemory`, `TransactiveMemory` | Extend & wrap |
 | REQ-026 | `Learning`, `LearningChannel`, `TransactiveMemory` | Wrap with MCP tools |
+| REQ-027 | `Agent`, `Behavior`, `BehaviorRegistry`, `MultiAgent` | Bridge to Claude Code |
 
 ### Draagon Forge Extensions (New)
 
