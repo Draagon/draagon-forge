@@ -1,0 +1,221 @@
+{
+    "name": "draagon-forge",
+    "displayName": "Draagon Forge",
+    "description": "AI Development Companion - intelligent, learning, proactive coding assistance",
+    "version": "0.1.0",
+    "publisher": "draagon-ai",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/draagon-ai/draagon-forge"
+    },
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Other",
+        "Machine Learning",
+        "Programming Languages"
+    ],
+    "keywords": [
+        "ai",
+        "assistant",
+        "code review",
+        "beliefs",
+        "learning"
+    ],
+    "activationEvents": [
+        "onStartupFinished",
+        "workspaceContains:.draagon-forge.json"
+    ],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "draagon-forge.openPanel",
+                "title": "Draagon Forge: Open Panel",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.searchContext",
+                "title": "Draagon Forge: Search Context",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.queryBeliefs",
+                "title": "Draagon Forge: Query Beliefs",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.openWatchlist",
+                "title": "Draagon Forge: Open Watchlist",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.openAudit",
+                "title": "Draagon Forge: Open Commit Audit",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.addWatchRule",
+                "title": "Draagon Forge: Add Watch Rule",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.reportOutcome",
+                "title": "Draagon Forge: Report Outcome",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.auditCurrentFile",
+                "title": "Draagon Forge: Audit Current File",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.refresh",
+                "title": "Draagon Forge: Refresh",
+                "category": "Draagon Forge"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "draagon-forge.openPanel",
+                "key": "ctrl+shift+d",
+                "mac": "cmd+shift+d"
+            },
+            {
+                "command": "draagon-forge.queryBeliefs",
+                "key": "ctrl+shift+b",
+                "mac": "cmd+shift+b"
+            },
+            {
+                "command": "draagon-forge.openWatchlist",
+                "key": "ctrl+shift+w",
+                "mac": "cmd+shift+w"
+            },
+            {
+                "command": "draagon-forge.openAudit",
+                "key": "ctrl+shift+a",
+                "mac": "cmd+shift+a"
+            }
+        ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "draagon-forge",
+                    "title": "Draagon Forge",
+                    "icon": "resources/icon.svg"
+                }
+            ]
+        },
+        "views": {
+            "draagon-forge": [
+                {
+                    "type": "webview",
+                    "id": "draagon-forge.chatView",
+                    "name": "Chat"
+                },
+                {
+                    "type": "webview",
+                    "id": "draagon-forge.beliefsView",
+                    "name": "Beliefs"
+                },
+                {
+                    "type": "webview",
+                    "id": "draagon-forge.watchlistView",
+                    "name": "Watchlist"
+                },
+                {
+                    "type": "webview",
+                    "id": "draagon-forge.auditView",
+                    "name": "Audit"
+                }
+            ]
+        },
+        "configuration": {
+            "title": "Draagon Forge",
+            "properties": {
+                "draagon-forge.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable Draagon Forge"
+                },
+                "draagon-forge.mcpServerPath": {
+                    "type": "string",
+                    "default": "python -m draagon_forge.mcp.server",
+                    "description": "Command to start the MCP server"
+                },
+                "draagon-forge.neo4jUri": {
+                    "type": "string",
+                    "default": "bolt://localhost:7687",
+                    "description": "Neo4j database URI"
+                },
+                "draagon-forge.qdrantUrl": {
+                    "type": "string",
+                    "default": "http://localhost:6333",
+                    "description": "Qdrant vector database URL"
+                },
+                "draagon-forge.watchlist.defaultSeverity": {
+                    "type": "string",
+                    "enum": ["block", "warn", "suggest"],
+                    "default": "warn",
+                    "description": "Default severity for new watch rules"
+                },
+                "draagon-forge.curiosity.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable curiosity engine questions"
+                },
+                "draagon-forge.curiosity.maxQuestionsPerDay": {
+                    "type": "number",
+                    "default": 3,
+                    "description": "Maximum curiosity questions per day"
+                },
+                "draagon-forge.audit.enableContinuousMonitoring": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable continuous commit monitoring"
+                },
+                "draagon-forge.audit.checkIntervalMinutes": {
+                    "type": "number",
+                    "default": 5,
+                    "description": "Interval for checking new commits (minutes)"
+                },
+                "draagon-forge.notifications.slack.enabled": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable Slack notifications"
+                },
+                "draagon-forge.notifications.slack.webhookUrl": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Slack webhook URL for notifications"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "pretest": "npm run compile && npm run lint",
+        "lint": "eslint src --ext ts",
+        "test": "node ./out/test/runTest.js",
+        "test:all": "npm test && pytest tests/ -v",
+        "package": "vsce package",
+        "publish": "vsce publish"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "@types/vscode": "^1.85.0",
+        "@typescript-eslint/eslint-plugin": "^6.13.0",
+        "@typescript-eslint/parser": "^6.13.0",
+        "@vscode/test-electron": "^2.3.8",
+        "eslint": "^8.54.0",
+        "typescript": "^5.3.2",
+        "vsce": "^2.15.0"
+    },
+    "dependencies": {
+        "marked": "^11.0.0"
+    }
+}
