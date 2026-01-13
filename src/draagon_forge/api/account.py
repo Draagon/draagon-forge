@@ -1,7 +1,8 @@
 """
 Account API Endpoints
 
-Provides endpoints for retrieving Claude Code and Draagon Forge account information.
+Provides endpoints for retrieving Claude Code and Draagon Forge account information,
+as well as session usage tracking.
 """
 
 from typing import Any
@@ -9,7 +10,8 @@ from typing import Any
 from fastapi import APIRouter
 
 from draagon_forge.mcp.config import config
-from draagon_forge.services.claude_config import ClaudeAccountInfo, read_claude_config
+from draagon_forge.services.claude_config import read_claude_config
+from draagon_forge.services.usage_tracker import UsageTracker
 
 router = APIRouter(prefix="/account", tags=["account"])
 
@@ -83,3 +85,62 @@ async def get_combined_account() -> dict[str, Any]:
         "claude": claude_info,
         "forge": forge_info,
     }
+
+
+# =============================================================================
+# Usage Tracking Endpoints
+# =============================================================================
+
+
+@router.get("/usage")
+async def get_session_usage() -> dict[str, Any]:
+    """
+    Get current session token usage and costs.
+
+    Returns:
+        Session usage summary including token counts, costs, and per-model breakdown
+    """
+    return UsageTracker.get_summary(config.user_id)
+
+
+@router.post("/usage/reset")
+async def reset_session_usage() -> dict[str, Any]:
+    """
+    Reset session usage tracking.
+
+    Returns:
+        Status confirmation
+    """
+    UsageTracker.reset()
+    return {"status": "reset", "message": "Session usage has been reset"}
+
+
+@router.post("/usage/record")
+async def record_usage(
+    model_id: str,
+    provider: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> dict[str, Any]:
+    """
+    Record token usage for a model call.
+
+    This endpoint is called by LLM providers to track usage.
+
+    Args:
+        model_id: The model identifier (e.g., "claude-3-5-sonnet")
+        provider: The provider name (e.g., "anthropic", "groq")
+        prompt_tokens: Number of prompt/input tokens
+        completion_tokens: Number of completion/output tokens
+
+    Returns:
+        Updated session usage summary
+    """
+    await UsageTracker.record(
+        model_id=model_id,
+        provider=provider,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        user_id=config.user_id,
+    )
+    return UsageTracker.get_summary(config.user_id)

@@ -31,9 +31,33 @@ interface ForgeAccountInfo {
     beliefCount: number;
 }
 
+interface ModelUsage {
+    modelId: string;
+    provider: string;
+    callCount: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    estimatedCostCents: number;
+}
+
+interface SessionUsage {
+    sessionId: string;
+    userId: string;
+    startedAt: string;
+    durationSeconds: number;
+    totalTokens: number;
+    totalPromptTokens: number;
+    totalCompletionTokens: number;
+    totalCostCents: number;
+    totalCalls: number;
+    models: Record<string, ModelUsage>;
+}
+
 interface CombinedAccountInfo {
     claude: ClaudeAccountInfo;
     forge: ForgeAccountInfo;
+    usage?: SessionUsage;
 }
 
 export class AccountViewProvider implements vscode.WebviewViewProvider {
@@ -69,6 +93,9 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
                 case 'refresh':
                     await this.refresh();
                     break;
+                case 'resetUsage':
+                    await this._resetUsage();
+                    break;
                 case 'openClaude':
                     vscode.env.openExternal(vscode.Uri.parse('https://claude.ai'));
                     break;
@@ -101,12 +128,27 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
         this._updateView();
 
         try {
-            const response = await fetch(`${this._apiUrl}/account`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+            // Fetch account and usage data in parallel
+            const [accountResponse, usageResponse] = await Promise.all([
+                fetch(`${this._apiUrl}/account`),
+                fetch(`${this._apiUrl}/account/usage`),
+            ]);
+
+            if (!accountResponse.ok) {
+                throw new Error(`HTTP ${accountResponse.status}`);
             }
 
-            this._accountInfo = await response.json() as CombinedAccountInfo;
+            const accountData = await accountResponse.json() as { claude: ClaudeAccountInfo; forge: ForgeAccountInfo };
+            let usageData: SessionUsage | undefined;
+
+            if (usageResponse.ok) {
+                usageData = await usageResponse.json() as SessionUsage;
+            }
+
+            this._accountInfo = {
+                ...accountData,
+                usage: usageData,
+            };
             this._error = null;
         } catch (e) {
             this._error = e instanceof Error ? e.message : String(e);
@@ -114,6 +156,24 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
         } finally {
             this._isLoading = false;
             this._updateView();
+        }
+    }
+
+    private async _resetUsage(): Promise<void> {
+        try {
+            const response = await fetch(`${this._apiUrl}/account/usage/reset`, {
+                method: 'POST',
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            vscode.window.showInformationMessage('Session usage has been reset');
+            await this.refresh();
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`Failed to reset usage: ${message}`);
         }
     }
 
@@ -257,6 +317,18 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
         }
         .actions button.primary:hover {
             background: var(--vscode-button-hoverBackground);
+        }
+        button.small {
+            padding: 4px 8px;
+            font-size: 10px;
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button.small:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
         }
         .loading {
             text-align: center;
@@ -450,6 +522,67 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
             html += '</div>';
 
             html += '</div>'; // End Forge section
+
+            // Usage Section
+            const usage = data.usage;
+            if (usage) {
+                html += '<div class="section">';
+                html += '<div class="section-title">Session Usage</div>';
+
+                // Token totals
+                html += '<div class="stats-grid">';
+                html += \`
+                    <div class="stat-box">
+                        <div class="stat-value">\${formatNumber(usage.totalTokens || 0)}</div>
+                        <div class="stat-label">Tokens</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">\${usage.totalCalls || 0}</div>
+                        <div class="stat-label">Calls</div>
+                    </div>
+                \`;
+                html += '</div>';
+
+                // Cost
+                const costDollars = (usage.totalCostCents || 0) / 100;
+                html += \`
+                    <div class="info-row" style="margin-top: 10px;">
+                        <span class="info-icon">&#x1F4B0;</span>
+                        <span class="info-label">Est. Cost:</span>
+                        <span class="info-value">\${costDollars < 0.01 ? 'Free' : '$' + costDollars.toFixed(2)}</span>
+                    </div>
+                \`;
+
+                // Model breakdown
+                const models = usage.models || {};
+                const modelEntries = Object.entries(models);
+                if (modelEntries.length > 0) {
+                    html += '<div style="margin-top: 10px; font-size: 10px; color: var(--vscode-descriptionForeground);">Models:</div>';
+                    html += '<div style="margin-top: 4px;">';
+                    for (const [modelId, model] of modelEntries) {
+                        const modelCost = (model.estimatedCostCents || 0) / 100;
+                        const icon = model.provider === 'groq' ? '&#x26A1;' : model.provider === 'anthropic' ? '&#x1F9E0;' : '&#x1F916;';
+                        html += \`
+                            <div class="info-row" style="font-size: 11px;">
+                                <span class="info-icon" style="font-size: 10px;">\${icon}</span>
+                                <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">\${modelId.split('/').pop() || modelId}</span>
+                                <span style="color: var(--vscode-descriptionForeground);">\${model.callCount}x</span>
+                                <span style="min-width: 50px; text-align: right;">\${modelCost < 0.01 ? 'Free' : '$' + modelCost.toFixed(2)}</span>
+                            </div>
+                        \`;
+                    }
+                    html += '</div>';
+                }
+
+                // Reset button
+                html += \`
+                    <div style="margin-top: 10px;">
+                        <button class="small" onclick="vscode.postMessage({ command: 'resetUsage' })">Reset Session</button>
+                    </div>
+                \`;
+
+                html += '</div>'; // End Usage section
+            }
 
             // Actions
             html += \`
