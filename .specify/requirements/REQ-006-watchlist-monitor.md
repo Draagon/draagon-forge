@@ -301,6 +301,35 @@ async def add_watch_rule(
     """Add a new watch rule from natural language description."""
 
 @mcp.tool
+async def get_watch_rules(
+    file_pattern: str | None = None,
+) -> list[WatchRule]:
+    """Get all watch rules, optionally filtered by file pattern."""
+
+@mcp.tool
+async def update_watch_rule(
+    rule_id: str,
+    description: str | None = None,
+    severity: str | None = None,
+    file_patterns: list[str] | None = None,
+    enabled: bool | None = None,
+) -> dict:
+    """Update an existing watch rule.
+
+    Returns explicit status with previous and new values.
+    """
+
+@mcp.tool
+async def delete_watch_rule(
+    rule_id: str,
+    reason: str | None = None,
+) -> dict:
+    """Delete a watch rule (soft delete).
+
+    Returns explicit deletion confirmation.
+    """
+
+@mcp.tool
 async def evaluate_watch_rules(
     file_path: str,
     content: str,
@@ -309,10 +338,27 @@ async def evaluate_watch_rules(
     """Evaluate code against all applicable watch rules."""
 
 @mcp.tool
-async def get_watch_rules(
-    file_pattern: str | None = None,
-) -> list[WatchRule]:
-    """Get all watch rules, optionally filtered by file pattern."""
+async def add_watch_exception(
+    rule_id: str,
+    file_path: str,
+    reason: str,
+) -> dict:
+    """Add an exception for a specific file to a watch rule."""
+
+@mcp.tool
+async def get_recent_alerts(
+    limit: int = 20,
+    severity: str | None = None,
+) -> list[dict]:
+    """Get recent alert history for visibility."""
+
+@mcp.tool
+async def dismiss_alert(
+    alert_id: str,
+    action: str,  # "ignore_once" | "add_exception" | "disable_rule"
+    reason: str | None = None,
+) -> dict:
+    """Dismiss an alert with specified action."""
 ```
 
 ---
@@ -351,7 +397,12 @@ async def get_watch_rules(
 - [ ] Inline hints displayed
 - [ ] Notifications working
 - [ ] Natural language rule creation
+- [ ] CRUD completeness: Create, Read, Update, Delete for watch rules
+- [ ] Exception management functional
+- [ ] Alert history and dismissal functional
+- [ ] All mutations return explicit status with ID and persistence
 - [ ] Tests passing
+- [ ] Agent-native audit checklist passed for this component
 
 ---
 

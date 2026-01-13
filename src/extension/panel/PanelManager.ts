@@ -3,7 +3,7 @@
  */
 
 import * as vscode from 'vscode';
-import { MCPClient } from '../mcp/client';
+import { ForgeAPIClient } from '../api/client';
 import { ChatPanel } from './ChatPanel';
 import { BeliefPanel } from './BeliefPanel';
 import { WatchlistPanel } from './WatchlistPanel';
@@ -21,7 +21,8 @@ export class PanelManager implements vscode.Disposable {
 
     constructor(
         private context: vscode.ExtensionContext,
-        private mcpClient: MCPClient
+        private apiClient: ForgeAPIClient,
+        _mcpClient?: unknown  // Reserved for future use
     ) {}
 
     /**
@@ -31,7 +32,7 @@ export class PanelManager implements vscode.Disposable {
         if (this.chatPanel) {
             this.chatPanel.reveal();
         } else {
-            this.chatPanel = new ChatPanel(this.context, this.mcpClient);
+            this.chatPanel = new ChatPanel(this.context, this.apiClient);
             this.chatPanel.onDidDispose(() => {
                 this.chatPanel = null;
             });
@@ -45,7 +46,7 @@ export class PanelManager implements vscode.Disposable {
         if (this.beliefPanel) {
             this.beliefPanel.reveal();
         } else {
-            this.beliefPanel = new BeliefPanel(this.context, this.mcpClient);
+            this.beliefPanel = new BeliefPanel(this.context, this.apiClient);
             this.beliefPanel.onDidDispose(() => {
                 this.beliefPanel = null;
             });
@@ -59,7 +60,7 @@ export class PanelManager implements vscode.Disposable {
         if (this.watchlistPanel) {
             this.watchlistPanel.reveal();
         } else {
-            this.watchlistPanel = new WatchlistPanel(this.context, this.mcpClient);
+            this.watchlistPanel = new WatchlistPanel(this.context, this.apiClient);
             this.watchlistPanel.onDidDispose(() => {
                 this.watchlistPanel = null;
             });
@@ -73,7 +74,7 @@ export class PanelManager implements vscode.Disposable {
         if (this.auditPanel) {
             this.auditPanel.reveal();
         } else {
-            this.auditPanel = new AuditPanel(this.context, this.mcpClient);
+            this.auditPanel = new AuditPanel(this.context, this.apiClient);
             this.auditPanel.onDidDispose(() => {
                 this.auditPanel = null;
             });

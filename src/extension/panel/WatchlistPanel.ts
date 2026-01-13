@@ -3,7 +3,7 @@
  */
 
 import * as vscode from 'vscode';
-import { MCPClient } from '../mcp/client';
+import { ForgeAPIClient } from '../api/client';
 
 /**
  * Watchlist panel for managing watch rules.
@@ -18,7 +18,7 @@ export class WatchlistPanel implements vscode.Disposable {
 
     constructor(
         _context: vscode.ExtensionContext,
-        _mcpClient: MCPClient
+        _apiClient: ForgeAPIClient
     ) {
         this.panel = vscode.window.createWebviewPanel(
             'draagonForgeWatchlist',

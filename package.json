@@ -28,7 +28,7 @@
         "onStartupFinished",
         "workspaceContains:.draagon-forge.json"
     ],
-    "main": "./dist/extension.js",
+    "main": "./dist/extension/extension.js",
     "contributes": {
         "commands": [
             {
@@ -77,6 +77,24 @@
                 "category": "Draagon Forge"
             }
         ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "draagon-forge",
+                    "title": "Draagon Forge",
+                    "icon": "resources/icon.svg"
+                }
+            ]
+        },
+        "views": {
+            "draagon-forge": [
+                {
+                    "type": "webview",
+                    "id": "draagon-forge.chatView",
+                    "name": "Chat"
+                }
+            ]
+        },
         "keybindings": [
             {
                 "command": "draagon-forge.openPanel",
@@ -99,39 +117,6 @@
                 "mac": "cmd+shift+a"
             }
         ],
-        "viewsContainers": {
-            "activitybar": [
-                {
-                    "id": "draagon-forge",
-                    "title": "Draagon Forge",
-                    "icon": "resources/icon.svg"
-                }
-            ]
-        },
-        "views": {
-            "draagon-forge": [
-                {
-                    "type": "webview",
-                    "id": "draagon-forge.chatView",
-                    "name": "Chat"
-                },
-                {
-                    "type": "webview",
-                    "id": "draagon-forge.beliefsView",
-                    "name": "Beliefs"
-                },
-                {
-                    "type": "webview",
-                    "id": "draagon-forge.watchlistView",
-                    "name": "Watchlist"
-                },
-                {
-                    "type": "webview",
-                    "id": "draagon-forge.auditView",
-                    "name": "Audit"
-                }
-            ]
-        },
         "configuration": {
             "title": "Draagon Forge",
             "properties": {
@@ -142,7 +127,7 @@
                 },
                 "draagon-forge.mcpServerPath": {
                     "type": "string",
-                    "default": "python -m draagon_forge.mcp.server",
+                    "default": "python3.11 -m draagon_forge.mcp.server",
                     "description": "Command to start the MCP server"
                 },
                 "draagon-forge.neo4jUri": {
@@ -154,6 +139,16 @@
                     "type": "string",
                     "default": "http://localhost:6333",
                     "description": "Qdrant vector database URL"
+                },
+                "draagon-forge.groqApiKey": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Groq API key for LLM inference (leave empty to use GROQ_API_KEY env var)"
+                },
+                "draagon-forge.apiUrl": {
+                    "type": "string",
+                    "default": "http://localhost:8765",
+                    "description": "URL of the Forge API server"
                 },
                 "draagon-forge.watchlist.defaultSeverity": {
                     "type": "string",

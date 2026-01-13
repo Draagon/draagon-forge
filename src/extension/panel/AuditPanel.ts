@@ -3,7 +3,7 @@
  */
 
 import * as vscode from 'vscode';
-import { MCPClient } from '../mcp/client';
+import { ForgeAPIClient } from '../api/client';
 
 /**
  * Audit panel for reviewing commits.
@@ -18,7 +18,7 @@ export class AuditPanel implements vscode.Disposable {
 
     constructor(
         _context: vscode.ExtensionContext,
-        _mcpClient: MCPClient
+        _apiClient: ForgeAPIClient
     ) {
         this.panel = vscode.window.createWebviewPanel(
             'draagonForgeAudit',

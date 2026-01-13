@@ -7,14 +7,16 @@
 
 import * as vscode from 'vscode';
 import { createMCPClient, MCPClient } from './mcp';
-import { PanelManager } from './panel';
+import { createForgeAPIClient, ForgeAPIClient } from './api';
+import { PanelManager, ChatViewProvider } from './panel';
 import { StatusBarManager } from './statusBar';
 import { registerCommands } from './commands';
 import { validateConfig } from './utils/config';
 import { withRetry } from './utils/errorHandler';
 
 let statusBar: StatusBarManager;
-let mcpClient: MCPClient;
+let mcpClient: MCPClient | null = null;
+let apiClient: ForgeAPIClient;
 let panelManager: PanelManager;
 
 /**
@@ -38,12 +40,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBar = new StatusBarManager();
         context.subscriptions.push(statusBar);
 
-        // 2. Connect to MCP server with retry logic
-        statusBar.update('disconnected', 'Connecting to MCP server...');
+        // 2. Connect to Forge API server with retry logic
+        statusBar.update('disconnected', 'Connecting to Forge API...');
 
         try {
-            mcpClient = await withRetry(
-                () => createMCPClient(context),
+            apiClient = await withRetry(
+                () => createForgeAPIClient(context),
                 3,  // Max retries
                 2000  // Initial delay 2s
             );
@@ -53,7 +55,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             statusBar.update('error', `Failed to connect: ${message}`);
 
             const selection = await vscode.window.showWarningMessage(
-                'Draagon Forge: MCP server unavailable. Some features will be disabled.',
+                'Draagon Forge: API server unavailable. Make sure the server is running.',
                 'Retry',
                 'View Logs'
             );
@@ -69,15 +71,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             return;
         }
 
-        // 3. Initialize panel manager
-        panelManager = new PanelManager(context, mcpClient);
+        // 3. Optionally connect to MCP server for additional tools
+        // This is optional - API server provides chat, MCP provides context tools
+        try {
+            mcpClient = await createMCPClient(context);
+            console.log('MCP client connected for context tools');
+        } catch {
+            console.log('MCP client not available - context tools disabled');
+            mcpClient = null;
+        }
+
+        // 4. Initialize panel manager (uses API client for chat)
+        panelManager = new PanelManager(context, apiClient, mcpClient);
         context.subscriptions.push(panelManager);
 
-        // 4. Register commands
-        const commands = registerCommands(context, mcpClient, panelManager);
+        // 5. Register sidebar webview provider (uses API client for chat)
+        const chatViewProvider = new ChatViewProvider(context.extensionUri, apiClient);
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider(
+                ChatViewProvider.viewType,
+                chatViewProvider
+            )
+        );
+
+        // 6. Register commands (uses both API and MCP clients)
+        const commands = registerCommands(context, apiClient, mcpClient, panelManager);
         context.subscriptions.push(...commands);
 
-        // 5. Watch for configuration changes
+        // 7. Watch for configuration changes
         context.subscriptions.push(
             vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration('draagon-forge')) {

@@ -1,7 +1,10 @@
 """Draagon Forge MCP Server.
 
-FastMCP server providing semantic memory and tools for Claude Code integration.
-Uses draagon-ai's shared Neo4j + Qdrant infrastructure.
+FastMCP server providing semantic memory tools for Claude Code integration.
+Uses the shared draagon-ai Agent for all semantic operations.
+
+The MCP tools route through the same memory as the Forge Agent,
+ensuring consistency between Claude Code queries and API chat.
 
 Usage:
     python -m draagon_forge.mcp.server
@@ -11,13 +14,12 @@ import asyncio
 import structlog
 from fastmcp import FastMCP
 
-# Import config and memory
+# Import config
 from draagon_forge.mcp.config import config
-from draagon_forge.mcp.memory import initialize_memory
 
-# Import tools
-from draagon_forge.mcp.tools import search, principles, conflicts, patterns
-from draagon_forge.mcp.tools import beliefs, feedback, learning, review
+# Import agent (creates shared memory)
+from draagon_forge.agent import create_forge_agent
+from draagon_forge.agent.forge_agent import get_shared_memory
 
 # Initialize structured logging
 structlog.configure(
@@ -35,7 +37,7 @@ mcp = FastMCP("draagon-forge")
 
 
 # =============================================================================
-# MCP Tools
+# MCP Tools - All route through draagon-ai's orchestration
 # =============================================================================
 
 
@@ -44,62 +46,128 @@ async def search_context(
     query: str,
     limit: int = 10,
     domain: str | None = None,
-    min_conviction: float | None = None,
 ) -> list[dict]:
-    """Search semantic memory for relevant context."""
-    return await search.search_context(query, limit, domain, min_conviction)
+    """Search semantic memory for relevant context.
+
+    This searches the shared memory used by the Forge Agent,
+    returning principles, patterns, and learnings relevant to your query.
+
+    Args:
+        query: Natural language search query
+        limit: Maximum results to return (default 10)
+        domain: Optional domain filter (architecture, testing, etc.)
+
+    Returns:
+        List of relevant context items with scores
+    """
+    memory = get_shared_memory()
+    if memory is None:
+        logger.warning("Memory not initialized - returning empty results")
+        return []
+
+    # Optionally filter by domain in query
+    search_query = f"{domain}: {query}" if domain else query
+
+    # Search with proper user/agent scoping
+    results = await memory.search(
+        search_query,
+        limit=limit,
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+    )
+
+    return [
+        {
+            "id": str(r.id) if hasattr(r, "id") else str(i),
+            "content": r.content if hasattr(r, "content") else str(r),
+            "score": r.score if hasattr(r, "score") else 0.8,
+            "type": r.metadata.get("type", "memory") if hasattr(r, "metadata") else "memory",
+            "source": r.metadata.get("source", "agent") if hasattr(r, "metadata") else "agent",
+            "domain": r.metadata.get("domain") if hasattr(r, "metadata") else domain,
+        }
+        for i, r in enumerate(results)
+    ]
 
 
 @mcp.tool()
-async def get_principles_tool(
+async def get_principles(
     domain: str | None = None,
-    min_conviction: float | None = None,
 ) -> list[dict]:
-    """Get development principles for a domain."""
-    return await principles.get_principles(domain, min_conviction)
+    """Get development principles for a domain.
+
+    Args:
+        domain: Optional domain filter (architecture, testing, llm, etc.)
+
+    Returns:
+        List of principles with conviction scores
+    """
+    memory = get_shared_memory()
+    if memory is None:
+        return []
+
+    from draagon_ai.memory.base import MemoryType
+    query = f"principle {domain}" if domain else "principle"
+    results = await memory.search(
+        query,
+        limit=20,
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        memory_types=[MemoryType.KNOWLEDGE],
+    )
+
+    return [
+        {
+            "id": str(r.id) if hasattr(r, "id") else str(i),
+            "content": r.content if hasattr(r, "content") else str(r),
+            "conviction": r.metadata.get("conviction", 0.7) if hasattr(r, "metadata") else 0.7,
+            "domain": r.metadata.get("domain") if hasattr(r, "metadata") else domain,
+        }
+        for i, r in enumerate(results)
+    ]
 
 
 @mcp.tool()
-async def check_conflicts_tool(
-    content: str,
-    domain: str | None = None,
-) -> list[dict]:
-    """Check if content conflicts with established principles."""
-    return await conflicts.check_conflicts(content, domain)
-
-
-@mcp.tool()
-async def get_patterns(domain: str | None = None) -> list[dict]:
-    """Get design patterns for a domain."""
-    return await patterns.get_patterns(domain)
-
-
-@mcp.tool()
-async def find_examples(pattern: str, limit: int = 5) -> list[dict]:
-    """Find real code examples matching a pattern."""
-    return await patterns.find_examples(pattern, limit)
-
-
-@mcp.tool()
-async def query_beliefs_tool(
+async def query_beliefs(
     query: str,
     category: str | None = None,
-    min_conviction: float | None = None,
     limit: int = 10,
 ) -> list[dict]:
-    """Query stored beliefs."""
-    return await beliefs.query_beliefs(query, category, min_conviction, limit)
+    """Query stored beliefs about a topic.
 
+    Beliefs are things Forge has learned and holds with varying conviction.
 
-@mcp.tool()
-async def adjust_belief_tool(
-    belief_id: str,
-    action: str,
-    new_content: str | None = None,
-    reason: str | None = None,
-) -> dict:
-    """Adjust a belief based on user feedback."""
-    return await beliefs.adjust_belief(belief_id, action, new_content, reason)
+    Args:
+        query: Search query for beliefs
+        category: Optional category filter
+        limit: Maximum results
+
+    Returns:
+        List of beliefs with conviction scores
+    """
+    memory = get_shared_memory()
+    if memory is None:
+        return []
+
+    from draagon_ai.memory.base import MemoryType
+    search_query = f"{category} {query}" if category else query
+    results = await memory.search(
+        search_query,
+        limit=limit,
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        memory_types=[MemoryType.BELIEF],
+    )
+
+    return [
+        {
+            "id": str(r.id) if hasattr(r, "id") else str(i),
+            "content": r.content if hasattr(r, "content") else str(r),
+            "conviction": r.metadata.get("conviction", 0.7) if hasattr(r, "metadata") else 0.7,
+            "category": r.metadata.get("category") if hasattr(r, "metadata") else category,
+            "domain": r.metadata.get("domain") if hasattr(r, "metadata") else None,
+        }
+        for i, r in enumerate(results)
+    ]
 
 
 @mcp.tool()
@@ -111,46 +179,158 @@ async def add_belief(
     source: str = "manual",
     rationale: str | None = None,
 ) -> dict:
-    """Add a new belief to memory."""
-    return await beliefs.add_belief(content, category, domain, conviction, source, rationale)
+    """Add a new belief to memory.
+
+    Args:
+        content: The belief content
+        category: Optional category
+        domain: Optional domain
+        conviction: Initial conviction (0.0-1.0, default 0.7)
+        source: Where this belief came from
+        rationale: Why this belief is held
+
+    Returns:
+        Status of the storage operation
+    """
+    memory = get_shared_memory()
+    if memory is None:
+        return {"error": "Memory not initialized"}
+
+    from draagon_ai.memory.base import MemoryType, MemoryScope
+    await memory.store(
+        content=content,
+        memory_type=MemoryType.BELIEF,
+        scope=MemoryScope.USER,
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        confidence=conviction,
+        source=source,
+        metadata={
+            "category": category,
+            "domain": domain,
+            "conviction": conviction,
+            "rationale": rationale,
+        },
+    )
+
+    return {
+        "status": "stored",
+        "content": content,
+        "conviction": conviction,
+    }
 
 
 @mcp.tool()
-async def report_outcome_tool(
-    context_ids: list[str],
-    outcome: str,
-    reason: str | None = None,
-) -> dict:
-    """Report how helpful retrieved context was."""
-    return await feedback.report_outcome(context_ids, outcome, reason)
-
-
-@mcp.tool()
-async def store_learning_tool(
+async def store_learning(
     content: str,
     source: str,
     conviction: float = 0.7,
     category: str | None = None,
     domain: str | None = None,
 ) -> dict:
-    """Store a new learning/principle in semantic memory."""
-    return await learning.store_learning(content, source, conviction, category, domain)
+    """Store a new learning in semantic memory.
+
+    Args:
+        content: What was learned
+        source: Where this learning came from
+        conviction: How strongly held (0.0-1.0)
+        category: Optional category
+        domain: Optional domain
+
+    Returns:
+        Status of the storage operation
+    """
+    memory = get_shared_memory()
+    if memory is None:
+        return {"error": "Memory not initialized"}
+
+    from draagon_ai.memory.base import MemoryType, MemoryScope
+    await memory.store(
+        content=content,
+        memory_type=MemoryType.INSIGHT,
+        scope=MemoryScope.USER,
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        confidence=conviction,
+        source=source,
+        metadata={
+            "category": category,
+            "domain": domain,
+            "conviction": conviction,
+        },
+    )
+
+    return {
+        "status": "stored",
+        "content": content,
+        "conviction": conviction,
+    }
 
 
 @mcp.tool()
-async def get_review_queue() -> list[dict]:
-    """Get items flagged for human review."""
-    return await review.get_review_queue()
+async def get_patterns(domain: str | None = None) -> list[dict]:
+    """Get design patterns for a domain.
+
+    Args:
+        domain: Optional domain filter
+
+    Returns:
+        List of patterns
+    """
+    memory = get_shared_memory()
+    if memory is None:
+        return []
+
+    from draagon_ai.memory.base import MemoryType
+    query = f"pattern {domain}" if domain else "design pattern"
+    results = await memory.search(
+        query,
+        limit=20,
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+        memory_types=[MemoryType.SKILL],
+    )
+
+    return [
+        {
+            "id": str(r.id) if hasattr(r, "id") else str(i),
+            "content": r.content if hasattr(r, "content") else str(r),
+            "domain": r.metadata.get("domain") if hasattr(r, "metadata") else domain,
+        }
+        for i, r in enumerate(results)
+    ]
 
 
 @mcp.tool()
-async def resolve_review(
-    item_id: str,
-    decision: str,
-    reason: str | None = None,
-) -> dict:
-    """Resolve a flagged review item."""
-    return await review.resolve_review(item_id, decision, reason)
+async def find_examples(pattern: str, limit: int = 5) -> list[dict]:
+    """Find code examples matching a pattern.
+
+    Args:
+        pattern: The pattern to find examples for
+        limit: Maximum examples to return
+
+    Returns:
+        List of example code/patterns
+    """
+    memory = get_shared_memory()
+    if memory is None:
+        return []
+
+    results = await memory.search(
+        f"example: {pattern}",
+        limit=limit,
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+    )
+
+    return [
+        {
+            "id": str(r.id) if hasattr(r, "id") else str(i),
+            "content": r.content if hasattr(r, "content") else str(r),
+            "pattern": pattern,
+        }
+        for i, r in enumerate(results)
+    ]
 
 
 # =============================================================================
@@ -159,14 +339,17 @@ async def resolve_review(
 
 
 async def _initialize() -> None:
-    """Initialize the server (async setup)."""
-    logger.info("Initializing memory backend...")
-    await initialize_memory()
-    logger.info(
-        "Memory initialized",
-        backend=config.storage_backend,
-        qdrant_url=config.qdrant_url if config.storage_backend == "draagon-ai" else "N/A",
-    )
+    """Initialize the server by creating the Forge agent.
+
+    This initializes the shared memory that all MCP tools use.
+    """
+    logger.info("Initializing Forge agent (creates shared memory)...")
+    try:
+        await create_forge_agent()
+        logger.info("Forge agent initialized - MCP tools ready")
+    except Exception as e:
+        logger.error(f"Failed to initialize agent: {e}")
+        logger.warning("MCP tools will return empty results until agent is initialized")
 
 
 def main() -> None:
@@ -174,11 +357,12 @@ def main() -> None:
     logger.info("Starting Draagon Forge MCP Server...")
     logger.info(
         "Configuration",
-        storage_backend=config.storage_backend,
+        llm_model=config.llm_model,
+        embedding_model=config.embedding_model,
         project=config.project_name,
     )
 
-    # Initialize memory backend before starting server
+    # Initialize agent (and shared memory) before starting server
     asyncio.run(_initialize())
 
     # Start the MCP server

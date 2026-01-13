@@ -1,5 +1,8 @@
 /**
  * MCP Client - Communicates with the Draagon Forge MCP server via stdio
+ *
+ * Implements the MCP (Model Context Protocol) JSON-RPC protocol with proper
+ * initialization handshake.
  */
 
 import * as vscode from 'vscode';
@@ -9,18 +12,29 @@ import { ChildProcess, spawn } from 'child_process';
  * MCP JSON-RPC request structure
  */
 interface MCPRequest {
-    id: string;
+    jsonrpc: '2.0';
+    id: string | number;
     method: string;
-    params: Record<string, unknown>;
+    params?: Record<string, unknown>;
+}
+
+/**
+ * MCP JSON-RPC notification structure (no id, no response expected)
+ */
+interface MCPNotification {
+    jsonrpc: '2.0';
+    method: string;
+    params?: Record<string, unknown>;
 }
 
 /**
  * MCP JSON-RPC response structure
  */
 interface MCPResponse {
-    id: string;
+    jsonrpc: '2.0';
+    id: string | number;
     result?: unknown;
-    error?: { code: number; message: string };
+    error?: { code: number; message: string; data?: unknown };
 }
 
 /**
@@ -28,6 +42,7 @@ interface MCPResponse {
  */
 export interface MCPClientOptions {
     serverCommand: string;
+    env?: Record<string, string>;
 }
 
 /**
@@ -37,8 +52,9 @@ export interface MCPClientOptions {
 export class MCPClient implements vscode.Disposable {
     private process: ChildProcess | null = null;
     private connected: boolean = false;
+    private initialized: boolean = false;
     private requestId: number = 0;
-    private pendingRequests: Map<string, {
+    private pendingRequests: Map<string | number, {
         resolve: (value: unknown) => void;
         reject: (error: Error) => void;
         timeout: NodeJS.Timeout;
@@ -68,7 +84,7 @@ export class MCPClient implements vscode.Disposable {
             return;
         }
 
-        // Parse command (e.g., "python -m draagon_forge.mcp.server")
+        // Parse command (e.g., "python3.11 -m draagon_forge.mcp.server")
         const parts = this.options.serverCommand.split(' ');
         const command = parts[0];
         const args = parts.slice(1);
@@ -76,9 +92,10 @@ export class MCPClient implements vscode.Disposable {
         this.outputChannel.appendLine(`Starting MCP server: ${this.options.serverCommand}`);
 
         try {
-            // Spawn MCP server process
+            // Spawn MCP server process with custom env vars
             this.process = spawn(command, args, {
                 stdio: ['pipe', 'pipe', 'pipe'],
+                env: { ...process.env, ...this.options.env },
             });
 
             // Handle stdout (MCP responses)
@@ -96,6 +113,7 @@ export class MCPClient implements vscode.Disposable {
             this.process.on('exit', (code: number | null) => {
                 this.outputChannel.appendLine(`MCP server exited with code ${code}`);
                 this.connected = false;
+                this.initialized = false;
                 this.rejectAllPending(new Error('MCP server disconnected'));
             });
 
@@ -103,16 +121,52 @@ export class MCPClient implements vscode.Disposable {
             this.process.on('error', (error: Error) => {
                 this.outputChannel.appendLine(`MCP server error: ${error.message}`);
                 this.connected = false;
+                this.initialized = false;
                 this.rejectAllPending(error);
             });
 
             this.connected = true;
-            this.outputChannel.appendLine('MCP server connected');
+            this.outputChannel.appendLine('MCP server process started');
+
+            // Initialize the MCP connection with handshake
+            await this.initialize();
 
         } catch (error) {
             this.outputChannel.appendLine(`Failed to start MCP server: ${error}`);
             throw error;
         }
+    }
+
+    /**
+     * Perform MCP initialization handshake.
+     */
+    private async initialize(): Promise<void> {
+        this.outputChannel.appendLine('Initializing MCP connection...');
+
+        // Send initialize request
+        const initResult = await this.sendRequest<{
+            protocolVersion: string;
+            serverInfo: { name: string; version: string };
+            capabilities: Record<string, unknown>;
+        }>('initialize', {
+            protocolVersion: '2024-11-05',
+            capabilities: {
+                roots: { listChanged: true },
+            },
+            clientInfo: {
+                name: 'draagon-forge-vscode',
+                version: '0.1.0',
+            },
+        });
+
+        this.outputChannel.appendLine(`Server: ${initResult.serverInfo.name} v${initResult.serverInfo.version}`);
+        this.outputChannel.appendLine(`Protocol: ${initResult.protocolVersion}`);
+
+        // Send initialized notification
+        this.sendNotification('notifications/initialized');
+
+        this.initialized = true;
+        this.outputChannel.appendLine('MCP connection initialized');
     }
 
     /**
@@ -131,18 +185,36 @@ export class MCPClient implements vscode.Disposable {
                 try {
                     // Check if it's JSON (starts with {)
                     if (trimmed.startsWith('{')) {
-                        const response: MCPResponse = JSON.parse(trimmed);
-                        this.handleResponse(response);
+                        const message = JSON.parse(trimmed);
+
+                        // Check if it's a response (has id and result/error)
+                        if ('id' in message && (message.result !== undefined || message.error !== undefined)) {
+                            this.handleResponse(message as MCPResponse);
+                        } else if ('method' in message) {
+                            // It's a notification from the server
+                            this.handleNotification(message);
+                        } else {
+                            this.outputChannel.appendLine(`Unknown message: ${trimmed}`);
+                        }
                     } else {
                         // Non-JSON output (server logs)
                         this.outputChannel.appendLine(`[Server] ${trimmed}`);
                     }
                 } catch (error) {
-                    this.outputChannel.appendLine(`Failed to parse response: ${error}`);
-                    this.outputChannel.appendLine(`Raw: ${trimmed}`);
+                    // Don't log parse errors for ANSI escape sequences and other non-JSON
+                    if (!trimmed.includes('\x1b') && !trimmed.includes('╭') && !trimmed.includes('│')) {
+                        this.outputChannel.appendLine(`Failed to parse: ${trimmed.substring(0, 100)}`);
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Handle a notification from the server.
+     */
+    private handleNotification(notification: { method: string; params?: unknown }): void {
+        this.outputChannel.appendLine(`< Notification: ${notification.method}`);
     }
 
     /**
@@ -160,52 +232,35 @@ export class MCPClient implements vscode.Disposable {
         this.pendingRequests.delete(response.id);
 
         if (response.error) {
+            this.outputChannel.appendLine(`< Error: ${response.error.message}`);
             pending.reject(new Error(response.error.message));
         } else {
+            this.outputChannel.appendLine(`< Response for ${response.id}`);
             pending.resolve(response.result);
         }
     }
 
     /**
-     * Disconnect from the MCP server.
+     * Send a JSON-RPC request to the server.
      */
-    async disconnect(): Promise<void> {
-        if (!this.connected) {
-            return;
-        }
-
-        this.outputChannel.appendLine('Disconnecting from MCP server');
-        this.process?.kill();
-        this.connected = false;
-        this.rejectAllPending(new Error('MCP client disconnected'));
-    }
-
-    /**
-     * Check if connected to the server.
-     */
-    isConnected(): boolean {
-        return this.connected;
-    }
-
-    /**
-     * Call an MCP tool with the given name and arguments.
-     */
-    async callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
+    private async sendRequest<T>(method: string, params?: Record<string, unknown>): Promise<T> {
         if (!this.connected || !this.process) {
             throw new Error('Not connected to MCP server');
         }
 
-        const id = `req-${this.requestId++}`;
+        const id = this.requestId++;
         const request: MCPRequest = {
+            jsonrpc: '2.0',
             id,
-            method: 'tools/call',
-            params: { name, arguments: args },
+            method,
+            params,
         };
 
-        this.outputChannel.appendLine(`> ${request.method} ${name}`);
+        this.outputChannel.appendLine(`> ${method} (id: ${id})`);
 
         // Send request
-        this.process.stdin?.write(JSON.stringify(request) + '\n');
+        const requestStr = JSON.stringify(request) + '\n';
+        this.process.stdin?.write(requestStr);
 
         // Wait for response with timeout
         return new Promise<T>((resolve, reject) => {
@@ -222,6 +277,89 @@ export class MCPClient implements vscode.Disposable {
                 timeout,
             });
         });
+    }
+
+    /**
+     * Send a JSON-RPC notification to the server (no response expected).
+     */
+    private sendNotification(method: string, params?: Record<string, unknown>): void {
+        if (!this.connected || !this.process) {
+            return;
+        }
+
+        const notification: MCPNotification = {
+            jsonrpc: '2.0',
+            method,
+            params,
+        };
+
+        this.outputChannel.appendLine(`> Notification: ${method}`);
+        this.process.stdin?.write(JSON.stringify(notification) + '\n');
+    }
+
+    /**
+     * Disconnect from the MCP server.
+     */
+    async disconnect(): Promise<void> {
+        if (!this.connected) {
+            return;
+        }
+
+        this.outputChannel.appendLine('Disconnecting from MCP server');
+        this.process?.kill();
+        this.connected = false;
+        this.initialized = false;
+        this.rejectAllPending(new Error('MCP client disconnected'));
+    }
+
+    /**
+     * Check if connected to the server.
+     */
+    isConnected(): boolean {
+        return this.connected && this.initialized;
+    }
+
+    /**
+     * Call an MCP tool with the given name and arguments.
+     */
+    async callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
+        if (!this.initialized) {
+            throw new Error('MCP connection not initialized');
+        }
+
+        const result = await this.sendRequest<{ content: Array<{ type: string; text?: string }> }>(
+            'tools/call',
+            { name, arguments: args }
+        );
+
+        // Extract text content from the result
+        if (result.content && Array.isArray(result.content)) {
+            const textContent = result.content.find(c => c.type === 'text');
+            if (textContent?.text) {
+                try {
+                    return JSON.parse(textContent.text) as T;
+                } catch {
+                    return textContent.text as unknown as T;
+                }
+            }
+        }
+
+        return result as unknown as T;
+    }
+
+    /**
+     * List available tools.
+     */
+    async listTools(): Promise<Array<{ name: string; description?: string }>> {
+        if (!this.initialized) {
+            throw new Error('MCP connection not initialized');
+        }
+
+        const result = await this.sendRequest<{ tools: Array<{ name: string; description?: string }> }>(
+            'tools/list'
+        );
+
+        return result.tools || [];
     }
 
     /**
@@ -253,7 +391,7 @@ export class MCPClient implements vscode.Disposable {
     }
 
     /**
-     * Query beliefs using the query_beliefs MCP tool.
+     * Query beliefs using the query_beliefs_tool MCP tool.
      */
     async queryBeliefs(query: string): Promise<Array<{
         id: string;
@@ -262,11 +400,11 @@ export class MCPClient implements vscode.Disposable {
         category?: string;
         domain?: string;
     }>> {
-        return this.callTool('query_beliefs', { query });
+        return this.callTool('query_beliefs_tool', { query });
     }
 
     /**
-     * Adjust a belief using the adjust_belief MCP tool.
+     * Adjust a belief using the adjust_belief_tool MCP tool.
      */
     async adjustBelief(
         beliefId: string,
@@ -276,7 +414,7 @@ export class MCPClient implements vscode.Disposable {
         id: string;
         conviction: number;
     }> {
-        return this.callTool('adjust_belief', {
+        return this.callTool('adjust_belief_tool', {
             belief_id: beliefId,
             action,
             ...options,
@@ -284,14 +422,34 @@ export class MCPClient implements vscode.Disposable {
     }
 
     /**
-     * Report an outcome for learning using the report_outcome MCP tool.
+     * Report an outcome for learning using the report_outcome_tool MCP tool.
      */
     async reportOutcome(outcome: {
         context_ids: string[];
         outcome: 'helpful' | 'not_helpful' | 'misleading' | 'outdated';
         reason?: string;
     }): Promise<void> {
-        await this.callTool('report_outcome', outcome);
+        await this.callTool('report_outcome_tool', outcome);
+    }
+
+    /**
+     * Chat with Forge - the AI development companion.
+     * This provides a conversational interface with personality and opinions.
+     */
+    async chatWithForge(
+        message: string,
+        options?: { conversationId?: string; context?: Record<string, unknown> }
+    ): Promise<{
+        response: string;
+        beliefs_used: string[];
+        actions_taken: string[];
+        confidence: number;
+    }> {
+        return this.callTool('chat_with_forge', {
+            message,
+            conversation_id: options?.conversationId,
+            context: options?.context,
+        });
     }
 
     /**

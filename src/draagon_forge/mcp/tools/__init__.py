@@ -10,6 +10,7 @@ This module contains all MCP tool implementations:
 - beliefs: Belief management
 - watchlist: Watch rule management
 - review: Review queue management
+- chat: Conversational interface with Forge agent
 """
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "beliefs",
     "watchlist",
     "review",
+    "chat",
 ]

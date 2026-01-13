@@ -57,13 +57,134 @@ Keep synchronous:
 - Data transformation
 - Configuration parsing
 
-### 5. Belief-Based Knowledge
+### 5. Unified Belief System
 
-All learned knowledge is stored as beliefs with:
-- **Conviction scores** (0.0 - 1.0)
-- **Reinforcement/weakening** from outcomes
-- **Source tracking**
-- **Usage history**
+**All knowledge is stored as beliefs.** Principles, learnings, and insights are all belief types - not separate entities.
+
+```python
+@dataclass
+class Belief:
+    content: str           # The belief statement
+    conviction: float      # 0.0 - 1.0, how strongly held
+    belief_type: str       # "principle" | "learning" | "insight" | "pattern"
+    source: str            # "claude_md" | "correction" | "observation" | "user"
+    domain: str | None     # "auth", "testing", "architecture", etc.
+    category: str | None   # Additional classification
+    usage_count: int       # How often referenced
+    last_used: datetime    # For relevance decay
+```
+
+**Belief Types:**
+
+| Type | Source | Initial Conviction | Mutability |
+|------|--------|-------------------|------------|
+| `principle` | CLAUDE.md, architecture docs | 0.85+ | Rarely changed |
+| `learning` | External research, experiments | 0.5-0.7 | Evolves with evidence |
+| `insight` | Corrections, observations | 0.6-0.8 | Reinforced/weakened |
+| `pattern` | Code examples, idioms | 0.7 | Updated with codebase |
+
+**Why unified:**
+- One CRUD interface for all knowledge
+- Conviction-based retrieval works uniformly
+- Principles can be challenged (lower conviction) if evidence contradicts
+- Learnings can become principles (raise conviction) when validated
+
+---
+
+## Agent-Native Design Principles
+
+Building software that treats AI agents as first-class citizens, not afterthoughts.
+
+### 1. Parity Principle
+
+**Every action available in the UI MUST be available via MCP tools.**
+
+Agents should have equal access to functionality as human users:
+
+| UI Action | MCP Tool Required |
+|-----------|-------------------|
+| Create watch rule via form | `add_watch_rule()` |
+| Edit/delete watch rule | `update_watch_rule()`, `delete_watch_rule()` |
+| View belief details | `query_beliefs()` |
+| Adjust conviction | `adjust_belief()` |
+| View commit audit | `get_audit_results()` |
+
+### 2. Granularity Principle
+
+**Tools should be atomic and composable, not monolithic.**
+
+- One tool = one action
+- Complex workflows built by composing simple tools
+- Tools return sufficient data for next-step decisions
+
+| WRONG | RIGHT |
+|-------|-------|
+| `review_and_fix_code()` | `review_code()` + `apply_fix()` |
+| `search_and_store()` | `search_context()` + `store_learning()` |
+
+### 3. CRUD Completeness Principle
+
+**Every entity type requires Create, Read, Update, Delete operations.**
+
+Before shipping any entity, verify:
+
+| Entity | Create | Read | Update | Delete |
+|--------|--------|------|--------|--------|
+| Beliefs (all types) | ✅ | ✅ | ✅ | ✅ |
+| Watch Rules | ✅ | ✅ | ✅ | ✅ |
+
+**Note:** Principles, patterns, and learnings are belief types (see Unified Belief System).
+They share the same CRUD operations via `add_belief(type=...)`, `query_beliefs()`, `adjust_belief()`, etc.
+
+### 4. Progress Visibility Principle
+
+**Long-running operations MUST stream progress updates.**
+
+- Operations > 2s should emit progress events
+- Agents need visibility into what's happening
+- Progress should include: stage, percentage, current item
+
+```python
+# Pattern for long operations
+async def long_operation():
+    yield {"stage": "analyzing", "progress": 0.2, "item": "file1.py"}
+    # ... work ...
+    yield {"stage": "complete", "progress": 1.0, "result": {...}}
+```
+
+### 5. Explicit Completion Principle
+
+**All operations MUST return explicit success/failure status.**
+
+- Never return empty responses for mutations
+- Include what changed and confirmation of persistence
+- Failed operations return error details, not empty results
+
+```python
+# WRONG
+async def add_belief(content: str):
+    await store(content)  # Returns nothing
+
+# RIGHT
+async def add_belief(content: str) -> dict:
+    result = await store(content)
+    return {"status": "created", "id": result.id, "persisted": True}
+```
+
+### 6. Discoverability Principle
+
+**Agents must be able to discover available capabilities dynamically.**
+
+- List available domains/categories
+- Describe what each tool does
+- Enumerate valid parameter values
+
+```python
+# Enable discovery
+await mcp.call_tool("list_domains")  # → ["auth", "testing", "api"]
+await mcp.call_tool("list_categories")  # → ["architecture", "patterns"]
+await mcp.call_tool("describe_tool", {"name": "search_context"})
+```
 
 ---
 

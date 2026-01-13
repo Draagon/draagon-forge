@@ -3,9 +3,18 @@
 Uses draagon-ai shared infrastructure for Neo4j and Qdrant.
 """
 
+import getpass
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+def _get_default_user_id() -> str:
+    """Get the default user ID from Unix username."""
+    try:
+        return getpass.getuser()
+    except Exception:
+        return "developer"
 
 
 @dataclass
@@ -39,7 +48,7 @@ class MCPConfig:
 
     # Agent identity (for draagon-ai memory scoping)
     agent_id: str = "draagon-forge"
-    user_id: str = "claude-code-user"
+    user_id: str = field(default_factory=_get_default_user_id)
 
     # Conviction score thresholds
     min_conviction_threshold: float = 0.3
@@ -59,9 +68,19 @@ class MCPConfig:
     memory_type_pattern: str = "skill"
     memory_type_learning: str = "insight"
 
+    # LLM configuration
+    llm_model: str = "llama-3.3-70b-versatile"
+    llm_provider: str = "groq"
+    groq_api_key: str | None = None  # Set via env or config
+
     @classmethod
     def from_env(cls) -> "MCPConfig":
         """Create configuration from environment variables."""
+        # Get user_id from env or fall back to Unix username
+        user_id = os.getenv("DRAAGON_USER_ID")
+        if not user_id:
+            user_id = _get_default_user_id()
+
         return cls(
             storage_backend=os.getenv("DRAAGON_STORAGE_BACKEND", "draagon-ai"),
             neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
@@ -76,7 +95,8 @@ class MCPConfig:
             project_name=os.getenv("DRAAGON_PROJECT", "draagon-forge"),
             project_root=Path(os.getenv("DRAAGON_PROJECT_ROOT", os.getcwd())),
             agent_id=os.getenv("DRAAGON_AGENT_ID", "draagon-forge"),
-            user_id=os.getenv("DRAAGON_USER_ID", "claude-code-user"),
+            user_id=user_id,
+            groq_api_key=os.getenv("GROQ_API_KEY"),
         )
 
 

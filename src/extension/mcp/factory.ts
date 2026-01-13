@@ -21,7 +21,22 @@ export async function createMCPClient(
         'python -m draagon_forge.mcp.server'
     );
 
-    const client = new MCPClient({ serverCommand });
+    // Build environment variables for the MCP server
+    const env: Record<string, string> = {};
+
+    // Pass GROQ API key if configured
+    const groqApiKey = config.get<string>('groqApiKey', '');
+    if (groqApiKey) {
+        env['GROQ_API_KEY'] = groqApiKey;
+    }
+
+    // Pass database configuration
+    const neo4jUri = config.get<string>('neo4jUri', 'bolt://localhost:7687');
+    const qdrantUrl = config.get<string>('qdrantUrl', 'http://localhost:6333');
+    env['NEO4J_URI'] = neo4jUri;
+    env['QDRANT_URL'] = qdrantUrl;
+
+    const client = new MCPClient({ serverCommand, env });
 
     try {
         await client.connect();

@@ -3,7 +3,7 @@
  */
 
 import * as vscode from 'vscode';
-import { MCPClient } from '../mcp/client';
+import { ForgeAPIClient } from '../api/client';
 
 /**
  * Message structure for chat
@@ -28,7 +28,7 @@ export class ChatPanel implements vscode.Disposable {
 
     constructor(
         context: vscode.ExtensionContext,
-        private mcpClient: MCPClient
+        private apiClient: ForgeAPIClient
     ) {
         this.panel = vscode.window.createWebviewPanel(
             'draagonForgeChat',
@@ -85,17 +85,14 @@ export class ChatPanel implements vscode.Disposable {
                 file: editor.document.fileName,
                 language: editor.document.languageId,
                 selection: editor.document.getText(editor.selection),
-            } : null;
+            } : undefined;
 
-            // Search relevant context from MCP
-            const contextResults = await this.mcpClient.searchContext(content, { limit: 5 });
-
-            // Build response with context
-            const response = this.buildResponse(content, contextResults, fileContext);
+            // Call Forge API for chat response
+            const response = await this.apiClient.chat(content, fileContext);
 
             this.messages.push({
                 role: 'assistant',
-                content: response,
+                content: response.response,
                 timestamp: new Date(),
             });
             this.updateWebview();
@@ -109,24 +106,6 @@ export class ChatPanel implements vscode.Disposable {
             });
             this.updateWebview();
         }
-    }
-
-    /**
-     * Build a response from context search results.
-     */
-    private buildResponse(
-        query: string,
-        context: Array<{ content: string; score: number; type: string }>,
-        _fileContext: unknown
-    ): string {
-        if (context.length === 0) {
-            return `I don't have any relevant context for "${query}" yet. As you work, I'll learn more about your codebase and beliefs.`;
-        }
-
-        const topContext = context[0];
-        const relevancePercent = (topContext.score * 100).toFixed(1);
-
-        return `Based on what I know (${topContext.type}):\n\n${topContext.content}\n\n*Relevance: ${relevancePercent}%*`;
     }
 
     /**
