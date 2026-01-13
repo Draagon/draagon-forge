@@ -4,6 +4,7 @@
 **Effort:** High (10 days)
 **Dependencies:** REQ-001
 **Blocks:** REQ-003, REQ-004, REQ-005, REQ-006, REQ-007
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific VS Code extension
 
 ---
 

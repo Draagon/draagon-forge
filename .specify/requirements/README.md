@@ -18,6 +18,40 @@ Each REQ document follows spec kit standards with:
 
 ---
 
+## Three-Layer Architecture
+
+Draagon Forge uses a layered architecture to enable reuse across domains:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           LAYER 1: draagon-ai (Core)                         │
+│  Memory, Beliefs, Agents, Behaviors, Orchestration, Learning                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 LAYER 2: draagon-ai-forge (Generic Extensions)               │
+│  MCP Integration, Multi-Model Routing, Behavior Evolution, Reflection        │
+│  REQ-023, REQ-024, REQ-025, REQ-026, REQ-027 (partial), REQ-028, REQ-031     │
+└─────────────────────────────────────────────────────────────────────────────┘
+                    │                              │
+                    ▼                              ▼
+┌───────────────────────────────┐  ┌───────────────────────────────────────────┐
+│ LAYER 3a: draagon-forge       │  │ LAYER 3b: draagon-forge-health (future)   │
+│ (Programming Domain)          │  │ (Healthcare Domain)                       │
+│ REQ-001-022, REQ-027.4,       │  │ analyze_diagnosis, check_protocols        │
+│ REQ-029, REQ-030              │  │ Clinical behaviors, HIPAA compliance      │
+└───────────────────────────────┘  └───────────────────────────────────────────┘
+```
+
+**Layer Key:**
+- 🔷 **Layer 2 (Generic)**: Reusable across all domains
+- 🟢 **Layer 3 (Domain)**: Programming-specific implementation
+
+See [REQ-031: Extension Architecture](./REQ-031-extension-architecture.md) for details.
+
+---
+
 ## Requirements
 
 ### Phase 1: Foundation
@@ -90,14 +124,17 @@ Each REQ document follows spec kit standards with:
 > **Derived from:** [draagon-ai BEHAVIOR_SYSTEM_DESIGN.md](../../draagon-ai/docs/design/BEHAVIOR_SYSTEM_DESIGN.md)
 > and [COGNITIVE_SWARM_ARCHITECTURE.md](../../draagon-ai/docs/specs/COGNITIVE_SWARM_ARCHITECTURE.md)
 
-| REQ ID | Feature | Priority | Complexity | Status |
-|--------|---------|----------|------------|--------|
-| [REQ-023](./REQ-023-behavior-architect.md) | Behavior Architect | P0 | Very High | Planned |
-| [REQ-024](./REQ-024-behavior-evolution.md) | Behavior Evolution | P1 | High | Planned |
-| [REQ-025](./REQ-025-cognitive-swarm.md) | Cognitive Swarm Orchestration | P1 | High | Planned |
-| [REQ-026](./REQ-026-metacognitive-reflection.md) | Metacognitive Reflection | P1 | Medium | Planned |
-| [REQ-027](./REQ-027-claude-code-integration.md) | Claude Code Integration | P0 | High | Planned |
-| [REQ-028](./REQ-028-multi-model-cost-optimization.md) | Multi-Model Cost Optimization | P0 | Medium | Planned |
+| REQ ID | Feature | Priority | Complexity | Layer | Status |
+|--------|---------|----------|------------|-------|--------|
+| [REQ-023](./REQ-023-behavior-architect.md) | Behavior Architect | P0 | Very High | 🔷 L2 | Planned |
+| [REQ-024](./REQ-024-behavior-evolution.md) | Behavior Evolution | P1 | High | 🔷 L2 | Planned |
+| [REQ-025](./REQ-025-cognitive-swarm.md) | Cognitive Swarm Orchestration | P1 | High | 🔷 L2 | Planned |
+| [REQ-026](./REQ-026-metacognitive-reflection.md) | Metacognitive Reflection | P1 | Medium | 🔷 L2 | Planned |
+| [REQ-027](./REQ-027-claude-code-integration.md) | Claude Code Integration | P0 | High | 🔷/🟢 | Planned |
+| [REQ-028](./REQ-028-multi-model-cost-optimization.md) | Multi-Model Cost Optimization | P0 | Medium | 🔷 L2 | Planned |
+| [REQ-031](./REQ-031-extension-architecture.md) | Extension Architecture | P0 | Medium | 🔷 L2 | Planned |
+
+**Layer Key:** 🔷 L2 = Generic (draagon-ai-forge), 🟢 L3 = Programming-specific, 🔷/🟢 = Split
 
 **Key Capabilities:**
 
@@ -109,6 +146,7 @@ Each REQ document follows spec kit standards with:
 | **Metacognitive Reflection** | Automatic post-task learning | Patterns extracted, expertise updated |
 | **Claude Code Integration** | Bridge Claude subagents/skills with draagon-ai | Hybrid intelligence, feedback loops |
 | **Multi-Model Cost Optimization** | Tiered LLM routing (Groq → Sonnet → Opus) | ~90% cost reduction, quality preserved |
+| **Extension Architecture** | Three-layer design for domain reuse | Healthcare, legal, etc. can reuse core |
 
 ### Phase 7: Sidebar, Inspector & Knowledge Ecosystem
 
@@ -213,6 +251,11 @@ graph TD
     REQ030 --> REQ029[REQ-029: Account & Knowledge]
     REQ012 --> REQ029
 
+    %% Extension Architecture (foundational for multi-domain)
+    REQ001 --> REQ031[REQ-031: Extension Architecture]
+    REQ023 --> REQ031
+    REQ028 --> REQ031
+
     style REQ014 fill:#f9f,stroke:#333,stroke-width:2px
     style REQ015 fill:#bbf,stroke:#333
     style REQ016 fill:#bbf,stroke:#333
@@ -230,6 +273,7 @@ graph TD
     style REQ028 fill:#ff9,stroke:#333,stroke-width:2px
     style REQ029 fill:#9ff,stroke:#333,stroke-width:2px
     style REQ030 fill:#9ff,stroke:#333
+    style REQ031 fill:#fcf,stroke:#333,stroke-width:2px
 ```
 
 **Critical Path:** REQ-001 → REQ-002 → REQ-003/REQ-004 → REQ-005/REQ-006
@@ -290,13 +334,13 @@ graph TD
 | 5b.2: Priming | REQ-021 | 4 days | Dynamic context assembly, success weighting |
 | 5b.3: Multi-Agent | REQ-022 | 5 days | Finding publication, expertise routing |
 
-### Phase 6: Self-Improvement & Multi-Agent (Est. 53 days)
+### Phase 6: Self-Improvement & Multi-Agent (Est. 58 days)
 
 > **Key Innovation:** This phase makes Draagon Forge **self-improving**. Unlike static AI tools,
 > behaviors evolve based on outcomes and new capabilities can be created through conversation.
 > **Claude Code Integration** bridges the gap between Claude's native capabilities and draagon-ai's
 > sophisticated agent system. **Multi-Model Cost Optimization** ensures intelligent tasks use
-> appropriate models to minimize costs.
+> appropriate models to minimize costs. **Extension Architecture** enables reuse across domains.
 
 | Sub-phase | Requirements | Effort | Focus |
 |-----------|--------------|--------|-------|
@@ -306,6 +350,7 @@ graph TD
 | 6.4: Reflection | REQ-026 | 5 days | Automatic post-task learning |
 | 6.5: Claude Integration | REQ-027 | 12 days | Bridge Claude subagents/skills with draagon-ai |
 | 6.6: Cost Optimization | REQ-028 | 6 days | Tiered LLM routing (Groq → Sonnet → Opus) |
+| 6.7: Extension Architecture | REQ-031 | 5 days | Three-layer design for domain reuse |
 
 **Expected Outcomes:**
 - Create new agents through natural conversation
@@ -315,6 +360,7 @@ graph TD
 - Hybrid Claude/draagon-ai agents with expertise routing (>75% accuracy)
 - Feedback loops close within 5 seconds
 - ~90% cost reduction via intelligent model routing
+- Reusable generic layer for healthcare, legal, and other domains
 
 ### Phase 7: Sidebar & Knowledge Ecosystem (Est. 25 days)
 
@@ -387,6 +433,8 @@ All requirements validated against Draagon Forge constitution:
 | **Memory Browser Refresh** | **<500ms** | **REQ-030** |
 | **Knowledge Import Accuracy** | **>85%** | **REQ-029** |
 | **GitHub Sync Success Rate** | **>95%** | **REQ-029** |
+| **Domain Onboarding Time** | **<1 day** | **REQ-031** |
+| **Layer 2 Code Reuse** | **>70%** | **REQ-031** |
 
 ---
 
@@ -434,6 +482,7 @@ All requirements validated against Draagon Forge constitution:
 | REQ-028 | `llm/providers/`, `llm/router.py` | New implementation for model routing |
 | REQ-029 | `IdentityManager`, `HierarchicalScope`, `DocumentIngestionOrchestrator` | Account/knowledge ecosystem |
 | REQ-030 | `EventBus`, `MemoryProvider` | Sidebar/inspector UI |
+| REQ-031 | `DomainRegistry`, `BaseMCPToolProvider` | Layer 2 architecture |
 
 ### Draagon Forge Extensions (New)
 

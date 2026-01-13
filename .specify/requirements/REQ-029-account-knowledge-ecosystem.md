@@ -4,6 +4,7 @@
 **Status:** Draft
 **Created:** 2026-01-13
 **Dependencies:** REQ-028 (Sidebar/Inspector), draagon-ai (identity, ingestion, scopes)
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific knowledge ecosystem
 
 ---
 

@@ -4,6 +4,7 @@
 **Effort:** 10 days
 **Dependencies:** REQ-022, REQ-023
 **Blocks:** None
+**Layer:** 🔷 L2 (draagon-ai-forge) - Generic swarm coordination, reusable across domains
 
 ---
 

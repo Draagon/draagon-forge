@@ -4,6 +4,7 @@
 **Effort:** High (8 days)
 **Dependencies:** REQ-001, REQ-002, REQ-003
 **Blocks:** REQ-011
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific code monitoring
 
 ---
 

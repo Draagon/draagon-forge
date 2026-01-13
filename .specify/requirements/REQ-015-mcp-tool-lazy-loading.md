@@ -4,6 +4,7 @@
 **Effort:** 5 days
 **Dependencies:** REQ-014, REQ-001
 **Blocks:** None
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific MCP optimization
 
 ---
 

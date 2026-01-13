@@ -4,6 +4,7 @@
 **Effort:** 5 days
 **Dependencies:** REQ-014, REQ-020, REQ-021
 **Blocks:** None
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific agent memory
 
 ---
 

@@ -4,6 +4,7 @@
 **Effort:** 12 days
 **Dependencies:** REQ-001, REQ-022
 **Blocks:** REQ-024
+**Layer:** 🔷 L2 (draagon-ai-forge) - Generic behavior creation, reusable across domains
 
 ---
 

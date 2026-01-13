@@ -4,6 +4,7 @@
 **Effort:** 8 days
 **Dependencies:** REQ-023
 **Blocks:** None
+**Layer:** 🔷 L2 (draagon-ai-forge) - Generic evolution system, reusable across domains
 
 ---
 

@@ -4,6 +4,7 @@
 **Effort:** Medium (5 days)
 **Dependencies:** REQ-001, REQ-002
 **Blocks:** REQ-006, REQ-011
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific belief UI
 
 ---
 

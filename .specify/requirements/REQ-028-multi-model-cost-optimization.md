@@ -4,6 +4,7 @@
 **Effort:** Medium (6 days)
 **Dependencies:** REQ-001, REQ-027
 **Blocks:** None
+**Layer:** 🔷 L2 (draagon-ai-forge) - Generic model routing, reusable across domains
 
 ---
 

@@ -4,6 +4,7 @@
 **Effort:** High (10 days)
 **Dependencies:** None
 **Blocks:** REQ-002, REQ-005, REQ-008, REQ-009
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific MCP tools and context
 
 ---
 

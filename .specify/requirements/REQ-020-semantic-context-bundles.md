@@ -4,6 +4,7 @@
 **Effort:** 5 days
 **Dependencies:** REQ-014, REQ-016
 **Blocks:** REQ-022
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific episodic memory
 
 ---
 

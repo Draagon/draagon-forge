@@ -4,6 +4,7 @@
 **Effort:** High (12 days)
 **Dependencies:** REQ-001, REQ-022, REQ-023
 **Blocks:** None
+**Layer:** 🔷/🟢 Split - Generic Claude sync in L2; programming-specific analysis in L3
 
 ---
 

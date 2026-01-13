@@ -4,6 +4,7 @@
 **Effort:** 4 days
 **Dependencies:** REQ-014, REQ-018
 **Blocks:** None
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific context injection
 
 ---
 

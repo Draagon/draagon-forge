@@ -4,6 +4,7 @@
 **Effort:** High (15 days)
 **Dependencies:** REQ-001
 **Blocks:** REQ-015, REQ-016, REQ-017, REQ-018, REQ-019
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific context patterns
 
 ---
 

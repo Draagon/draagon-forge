@@ -4,6 +4,7 @@
 **Effort:** 5 days
 **Dependencies:** REQ-001, REQ-022
 **Blocks:** None
+**Layer:** 🔷 L2 (draagon-ai-forge) - Generic reflection system, reusable across domains
 
 ---
 

@@ -4,6 +4,7 @@
 **Status:** Draft
 **Created:** 2026-01-13
 **Dependencies:** REQ-001, REQ-002, REQ-005, REQ-006, REQ-023
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific VS Code extension UI
 
 ---
 

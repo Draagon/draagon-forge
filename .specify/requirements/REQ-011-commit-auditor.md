@@ -4,6 +4,7 @@
 **Effort:** High (7 days)
 **Dependencies:** REQ-001, REQ-003, REQ-005, REQ-006
 **Blocks:** REQ-012
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific git audit
 
 ---
 
