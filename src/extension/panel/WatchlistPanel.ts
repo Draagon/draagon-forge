@@ -2,56 +2,67 @@
  * Watchlist Panel - Watch rule configuration UI
  */
 
-import * as vscode from "vscode";
+import * as vscode from 'vscode';
+import { MCPClient } from '../mcp/client';
 
-export class WatchlistPanel implements vscode.WebviewViewProvider {
-    public static readonly viewType = "draagon-forge.watchlistView";
+/**
+ * Watchlist panel for managing watch rules.
+ * Opens as a standalone webview panel.
+ */
+export class WatchlistPanel implements vscode.Disposable {
+    private panel: vscode.WebviewPanel;
+    private disposables: vscode.Disposable[] = [];
+    private onDidDisposeEmitter = new vscode.EventEmitter<void>();
 
-    constructor(private readonly extensionUri: vscode.Uri) {}
+    readonly onDidDispose = this.onDidDisposeEmitter.event;
 
-    resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        _context: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken
-    ): void {
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this.extensionUri],
-        };
-
-        webviewView.webview.html = this.getHtmlContent(webviewView.webview);
-
-        // TODO: Handle messages from webview
-        webviewView.webview.onDidReceiveMessage(async (message) => {
-            switch (message.command) {
-                case "addRule":
-                    // TODO: Implement add rule
-                    break;
-                case "removeRule":
-                    // TODO: Implement remove rule
-                    break;
-                case "toggleRule":
-                    // TODO: Implement toggle rule
-                    break;
+    constructor(
+        _context: vscode.ExtensionContext,
+        _mcpClient: MCPClient
+    ) {
+        this.panel = vscode.window.createWebviewPanel(
+            'draagonForgeWatchlist',
+            'Draagon Forge Watchlist',
+            vscode.ViewColumn.Beside,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
             }
-        });
+        );
+
+        this.panel.webview.html = this.getHtmlContent();
+
+        this.panel.onDidDispose(
+            () => {
+                this.dispose();
+            },
+            null,
+            this.disposables
+        );
     }
 
-    private getHtmlContent(_webview: vscode.Webview): string {
-        // TODO: Implement proper webview HTML with CSP
-        return `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Watchlist</title>
-            </head>
-            <body>
-                <h2>Watchlist</h2>
-                <p>Watch rule configuration - coming soon</p>
-            </body>
-            </html>
-        `;
+    private getHtmlContent(): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Watchlist</title>
+</head>
+<body>
+    <h2>Watchlist Panel</h2>
+    <p>Watch rule configuration - coming soon!</p>
+</body>
+</html>`;
+    }
+
+    reveal(): void {
+        this.panel.reveal();
+    }
+
+    dispose(): void {
+        this.onDidDisposeEmitter.fire();
+        this.onDidDisposeEmitter.dispose();
+        this.panel.dispose();
+        this.disposables.forEach(d => d.dispose());
     }
 }

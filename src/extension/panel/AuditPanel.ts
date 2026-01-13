@@ -2,53 +2,67 @@
  * Audit Panel - Commit audit dashboard
  */
 
-import * as vscode from "vscode";
+import * as vscode from 'vscode';
+import { MCPClient } from '../mcp/client';
 
-export class AuditPanel implements vscode.WebviewViewProvider {
-    public static readonly viewType = "draagon-forge.auditView";
+/**
+ * Audit panel for reviewing commits.
+ * Opens as a standalone webview panel.
+ */
+export class AuditPanel implements vscode.Disposable {
+    private panel: vscode.WebviewPanel;
+    private disposables: vscode.Disposable[] = [];
+    private onDidDisposeEmitter = new vscode.EventEmitter<void>();
 
-    constructor(private readonly extensionUri: vscode.Uri) {}
+    readonly onDidDispose = this.onDidDisposeEmitter.event;
 
-    resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        _context: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken
-    ): void {
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this.extensionUri],
-        };
-
-        webviewView.webview.html = this.getHtmlContent(webviewView.webview);
-
-        // TODO: Handle messages from webview
-        webviewView.webview.onDidReceiveMessage(async (message) => {
-            switch (message.command) {
-                case "auditCommit":
-                    // TODO: Implement commit audit
-                    break;
-                case "resolveIssue":
-                    // TODO: Implement issue resolution
-                    break;
+    constructor(
+        _context: vscode.ExtensionContext,
+        _mcpClient: MCPClient
+    ) {
+        this.panel = vscode.window.createWebviewPanel(
+            'draagonForgeAudit',
+            'Draagon Forge Audit',
+            vscode.ViewColumn.Beside,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
             }
-        });
+        );
+
+        this.panel.webview.html = this.getHtmlContent();
+
+        this.panel.onDidDispose(
+            () => {
+                this.dispose();
+            },
+            null,
+            this.disposables
+        );
     }
 
-    private getHtmlContent(_webview: vscode.Webview): string {
-        // TODO: Implement proper webview HTML with CSP
-        return `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Commit Audit</title>
-            </head>
-            <body>
-                <h2>Commit Audit</h2>
-                <p>Audit dashboard - coming soon</p>
-            </body>
-            </html>
-        `;
+    private getHtmlContent(): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Audit</title>
+</head>
+<body>
+    <h2>Audit Panel</h2>
+    <p>Commit audit - coming soon!</p>
+</body>
+</html>`;
+    }
+
+    reveal(): void {
+        this.panel.reveal();
+    }
+
+    dispose(): void {
+        this.onDidDisposeEmitter.fire();
+        this.onDidDisposeEmitter.dispose();
+        this.panel.dispose();
+        this.disposables.forEach(d => d.dispose());
     }
 }

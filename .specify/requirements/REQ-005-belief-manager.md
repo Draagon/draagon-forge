@@ -13,12 +13,33 @@ Build a Belief Manager that allows users to query, view, and adjust Draagon's be
 
 ### Purpose
 
-The Belief Manager provides transparency and control over what Draagon "believes" about the codebase, allowing developers to:
-- Query beliefs by topic
-- View belief details (conviction, source, usage)
+The Belief Manager provides transparency and control over what Draagon "believes" about the codebase. It's the **UI layer** on top of REQ-001's MCP tools, which in turn wrap draagon-ai's `AgentBelief` model.
+
+### draagon-ai Foundation
+
+This requirement builds on:
+
+| draagon-ai Component | Usage |
+|---------------------|-------|
+| `AgentBelief` | Core belief model with confidence |
+| `BeliefType` | household_fact, verified_fact, inferred, etc. |
+| `cognition/beliefs.py` | Belief formation and conflict resolution prompts |
+
+### Draagon Forge Extensions
+
+| Extension | Purpose |
+|-----------|---------|
+| `conviction: float` | Reinforcement score (separate from confidence) |
+| `ForgeBeliefType.PRINCIPLE` | Architectural rules |
+| `ForgeBeliefType.PATTERN` | Code examples |
+| `ForgeBeliefType.LEARNING` | Extracted insights |
+
+This allows developers to:
+- Query beliefs by topic, type, or domain
+- View belief details (conviction, type, source, usage)
 - Reinforce or weaken beliefs
 - Modify belief content
-- Add new beliefs from instructions
+- Add new beliefs of any type (principle, learning, pattern, insight)
 
 ---
 
@@ -31,15 +52,15 @@ The Belief Manager provides transparency and control over what Draagon "believes
 │  🧠 Belief Manager                                              │
 ├─────────────────────────────────────────────────────────────────┤
 │  Search: [async context managers________________] [🔍]          │
+│  Type: [All ▼] Domain: [All ▼] Min Conviction: [0.5___]        │
 │                                                                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  BELIEF: "Always use async context managers for DB"     │   │
+│  │  PRINCIPLE: "Always use async context managers for DB"  │   │
 │  │  ─────────────────────────────────────────────────────  │   │
 │  │  Conviction: ████████░░ 0.85                            │   │
-│  │  Category: architecture                                  │   │
-│  │  Source: developer_correction (×7)                       │   │
-│  │  Last Used: 2 hours ago                                  │   │
-│  │  Usage Count: 23                                         │   │
+│  │  Type: principle  Domain: database                       │   │
+│  │  Source: claude_md                                       │   │
+│  │  Last Used: 2 hours ago  Usage Count: 23                 │   │
 │  │                                                          │   │
 │  │  [👍 Reinforce] [👎 Weaken] [✏️ Modify] [🗑️ Delete]     │   │
 │  │                                                          │   │
@@ -47,13 +68,22 @@ The Belief Manager provides transparency and control over what Draagon "believes
 │  │  • "Use Protocol for dependency injection" (0.78)       │   │
 │  │  • "Prefer composition over inheritance" (0.92)         │   │
 │  └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  LEARNING: "Connection pooling improves DB performance" │   │
+│  │  ─────────────────────────────────────────────────────  │   │
+│  │  Conviction: ██████░░░░ 0.65                            │   │
+│  │  Type: learning  Domain: database                        │   │
+│  │  Source: observation                                     │   │
+│  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Acceptance Criteria:**
 - [ ] Search field filters beliefs by content
-- [ ] Belief cards show all metadata
-- [ ] Conviction displayed as progress bar
+- [ ] Type filter dropdown (principle, learning, pattern, insight, all)
+- [ ] Domain filter dropdown (dynamically populated)
+- [ ] Conviction displayed as progress bar with type-appropriate coloring
 - [ ] Related beliefs linked and clickable
 - [ ] Action buttons functional
 
@@ -63,18 +93,21 @@ The Belief Manager provides transparency and control over what Draagon "believes
 @mcp.tool
 async def query_beliefs(
     query: str,
+    belief_type: str | None = None,  # "principle" | "learning" | "pattern" | "insight"
+    domain: str | None = None,
     category: str | None = None,
     min_conviction: float = 0.0,
     limit: int = 10,
 ) -> list[BeliefInfo]:
-    """Query and explore stored beliefs."""
+    """Query and explore stored beliefs of any type."""
 ```
 
 **Acceptance Criteria:**
 - [ ] Semantic search by query string
-- [ ] Filter by category
+- [ ] Filter by belief_type
+- [ ] Filter by domain
 - [ ] Filter by minimum conviction
-- [ ] Returns structured BeliefInfo objects
+- [ ] Returns structured BeliefInfo objects with type information
 - [ ] Includes related beliefs
 
 ### REQ-005.3: Belief Adjustment MCP Tools
@@ -112,19 +145,32 @@ async def adjust_belief(
 @mcp.tool
 async def add_belief(
     content: str,
-    category: str,
-    conviction: float = 0.7,
+    belief_type: str,  # "principle" | "learning" | "pattern" | "insight"
+    domain: str | None = None,
+    category: str | None = None,
+    conviction: float | None = None,  # Defaults by type: principle=0.85, learning=0.7
+    source: str = "user",
     rationale: str | None = None,
 ) -> dict:
-    """Add a new belief from user instruction."""
+    """Add a new belief of any type."""
 ```
 
+**Type-specific defaults:**
+
+| Type | Default Conviction | Typical Source |
+|------|-------------------|----------------|
+| principle | 0.85 | claude_md, user |
+| learning | 0.7 | observation, correction |
+| pattern | 0.8 | codebase, user |
+| insight | 0.75 | correction, observation |
+
 **Acceptance Criteria:**
-- [ ] Creates belief with specified content
-- [ ] Sets source as "user_instruction"
-- [ ] Initial conviction from parameter
+- [ ] Creates belief with specified type and content
+- [ ] Applies type-appropriate default conviction if not specified
+- [ ] Sets source appropriately
 - [ ] Stores rationale if provided
 - [ ] Checks for duplicate beliefs
+- [ ] Returns explicit status with belief ID
 
 ### REQ-005.5: Natural Language Belief Adjustment
 
@@ -157,32 +203,52 @@ Draagon: "Reinforced 'Never silence exceptions without logging' from 0.95 → 0.
 ### MCP Tools (Python)
 
 ```python
-# src/mcp/tools/beliefs.py
+# src/draagon_forge/mcp/tools/beliefs.py
+
+from draagon_ai.core.types import AgentBelief, BeliefType
+from draagon_forge.core.extensions import ForgeBeliefType
 
 @dataclass
 class BeliefInfo:
+    """Extended belief info for UI display.
+
+    Wraps draagon-ai's AgentBelief with Forge-specific fields.
+    """
     id: str
     content: str
-    conviction: float
-    category: str | None
+    belief_type: str  # ForgeBeliefType value (PRINCIPLE, PATTERN, LEARNING, etc.)
+    conviction: float  # Forge extension: reinforcement score
+    confidence: float  # draagon-ai: certainty score
+    domain: str | None
     source: str | None
     usage_count: int
     last_used: datetime | None
     related: list[RelatedBelief]
 
+    # From draagon-ai's AgentBelief
+    supporting_observations: list[str]
+    needs_clarification: bool
+
 @mcp.tool
 async def query_beliefs(
     query: str,
+    belief_type: str | None = None,
+    domain: str | None = None,
     category: str | None = None,
     min_conviction: float = 0.0,
     limit: int = 10,
 ) -> list[BeliefInfo]:
+    filters = {}
+    if belief_type:
+        filters["belief_type"] = belief_type
+    if domain:
+        filters["domain"] = domain
+    if category:
+        filters["category"] = category
+
     results = await memory.search(
         query=query,
-        filters={
-            "memory_type": {"$in": ["PRINCIPLE", "BELIEF", "LEARNING"]},
-            **({"category": category} if category else {}),
-        },
+        filters=filters,
         limit=limit,
     )
 
@@ -190,7 +256,9 @@ async def query_beliefs(
         BeliefInfo(
             id=r.id,
             content=r.content,
+            belief_type=r.metadata.get("belief_type", "learning"),
             conviction=r.metadata.get("conviction", 0.5),
+            domain=r.metadata.get("domain"),
             category=r.metadata.get("category"),
             source=r.metadata.get("source"),
             usage_count=r.metadata.get("usage_count", 0),

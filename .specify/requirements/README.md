@@ -53,6 +53,81 @@ Each REQ document follows spec kit standards with:
 | [REQ-012](./REQ-012-github-integration.md) | GitHub Integration | P1 | High | Planned |
 | [REQ-013](./REQ-013-feedback-loops.md) | Feedback Loops | P1 | Medium | Planned |
 
+### Phase 5: Context Engineering & Semantic Intelligence
+
+> **Combines insights from:**
+> - [Cursor's Dynamic Context Discovery](https://cursor.com/blog/dynamic-context-discovery) - Token reduction patterns
+> - Context Engineering R&D Framework - Reduce & Delegate strategies
+>
+> **Key Innovation:** Unlike file-centric approaches (CLAUDE.md, bundle files, static primes),
+> Draagon Forge uses **semantic memory** (Neo4j + Qdrant) for dynamic, learning, queryable context.
+
+#### Phase 5a: Token Optimization (from Cursor)
+
+| REQ ID | Feature | Priority | Complexity | Status |
+|--------|---------|----------|------------|--------|
+| [REQ-014](./REQ-014-dynamic-context-discovery.md) | Dynamic Context Discovery (Overview) | P0 | High | Planned |
+| [REQ-015](./REQ-015-mcp-tool-lazy-loading.md) | MCP Tool Lazy Loading | P0 | Medium | Planned |
+| [REQ-016](./REQ-016-conversation-history-search.md) | Conversation History Search | P1 | Low | Planned |
+| [REQ-017](./REQ-017-adaptive-context-checking.md) | Adaptive Context Checking | P1 | Low | Planned |
+| [REQ-018](./REQ-018-quality-aware-retrieval.md) | Quality-Aware Retrieval | P1 | Low | Planned |
+| [REQ-019](./REQ-019-file-based-output-management.md) | File-Based Output Management | P2 | Medium | Planned |
+
+#### Phase 5b: Semantic Context Management (R&D Framework Enhanced)
+
+| REQ ID | Feature | Priority | Complexity | Status |
+|--------|---------|----------|------------|--------|
+| [REQ-020](./REQ-020-semantic-context-bundles.md) | Semantic Context Bundles | P1 | Medium | Planned |
+| [REQ-021](./REQ-021-dynamic-context-priming.md) | Dynamic Context Priming | P1 | Medium | Planned |
+| [REQ-022](./REQ-022-cross-agent-semantic-memory.md) | Cross-Agent Semantic Memory | P1 | Medium | Planned |
+
+### Phase 6: Self-Improvement & Multi-Agent Intelligence
+
+> **Key Innovation:** Beyond static agents, Draagon Forge enables **self-improving behaviors** and
+> **cognitive swarms** that create new capabilities through conversation, evolve prompts through
+> genetic algorithms, and learn collectively from outcomes.
+>
+> **Derived from:** [draagon-ai BEHAVIOR_SYSTEM_DESIGN.md](../../draagon-ai/docs/design/BEHAVIOR_SYSTEM_DESIGN.md)
+> and [COGNITIVE_SWARM_ARCHITECTURE.md](../../draagon-ai/docs/specs/COGNITIVE_SWARM_ARCHITECTURE.md)
+
+| REQ ID | Feature | Priority | Complexity | Status |
+|--------|---------|----------|------------|--------|
+| [REQ-023](./REQ-023-behavior-architect.md) | Behavior Architect | P0 | Very High | Planned |
+| [REQ-024](./REQ-024-behavior-evolution.md) | Behavior Evolution | P1 | High | Planned |
+| [REQ-025](./REQ-025-cognitive-swarm.md) | Cognitive Swarm Orchestration | P1 | High | Planned |
+| [REQ-026](./REQ-026-metacognitive-reflection.md) | Metacognitive Reflection | P1 | Medium | Planned |
+
+**Key Capabilities:**
+
+| Capability | Description | Differentiator |
+|------------|-------------|----------------|
+| **Behavior Architect** | Create agents through natural conversation | No code required, iterative refinement |
+| **Behavior Evolution** | Self-improving prompts via genetic algorithms | Learns from outcomes automatically |
+| **Cognitive Swarm** | Multi-agent coordination with shared memory | Parallel execution, belief reconciliation |
+| **Metacognitive Reflection** | Automatic post-task learning | Patterns extracted, expertise updated |
+
+---
+
+## The Semantic Advantage
+
+Traditional context engineering uses **files**. Draagon Forge uses **semantic memory**:
+
+| Pattern | File-Centric | Draagon Semantic |
+|---------|--------------|------------------|
+| **Context Bundles** | Append ops to .md file | Store as episodic memories with relationships |
+| **Priming** | Load static `/prime-*.md` | Query beliefs/patterns by task type dynamically |
+| **Agent Reports** | Write to report.md | Publish to shared semantic memory |
+| **Expertise** | Manual agent configs | TransactiveMemory tracks success automatically |
+| **Decisions** | Scattered in files | Shared decision registry, queryable |
+| **Learning** | Manual CLAUDE.md updates | Findings reconcile to beliefs automatically |
+
+**Benefits:**
+- Context evolves as beliefs strengthen/weaken
+- Cross-session learning (patterns persist)
+- Automatic relevance filtering (no manual cleanup)
+- Expertise routing (best agent selected automatically)
+- Conflict detection (contradicting findings flagged)
+
 ---
 
 ## Dependencies
@@ -71,9 +146,52 @@ graph TD
     REQ003 --> REQ011[REQ-011: Commit Auditor]
     REQ009 --> REQ012[REQ-012: GitHub Integration]
     REQ004 --> REQ013[REQ-013: Feedback Loops]
+
+    %% Phase 5a: Token Optimization
+    REQ001 --> REQ014[REQ-014: Dynamic Context Discovery]
+    REQ014 --> REQ015[REQ-015: Tool Lazy Loading]
+    REQ014 --> REQ016[REQ-016: Conversation History]
+    REQ014 --> REQ017[REQ-017: Adaptive Context]
+    REQ014 --> REQ018[REQ-018: Quality Retrieval]
+    REQ014 --> REQ019[REQ-019: File Outputs]
+
+    %% Phase 5b: Semantic Context
+    REQ016 --> REQ020[REQ-020: Semantic Bundles]
+    REQ018 --> REQ021[REQ-021: Dynamic Priming]
+    REQ020 --> REQ022[REQ-022: Cross-Agent Memory]
+    REQ021 --> REQ022
+
+    %% Phase 6: Self-Improvement & Multi-Agent
+    REQ001 --> REQ023[REQ-023: Behavior Architect]
+    REQ022 --> REQ023
+    REQ023 --> REQ024[REQ-024: Behavior Evolution]
+    REQ022 --> REQ025[REQ-025: Cognitive Swarm]
+    REQ023 --> REQ025
+    REQ001 --> REQ026[REQ-026: Metacognitive Reflection]
+    REQ022 --> REQ026
+
+    style REQ014 fill:#f9f,stroke:#333,stroke-width:2px
+    style REQ015 fill:#bbf,stroke:#333
+    style REQ016 fill:#bbf,stroke:#333
+    style REQ017 fill:#bbf,stroke:#333
+    style REQ018 fill:#bbf,stroke:#333
+    style REQ019 fill:#bbf,stroke:#333
+    style REQ020 fill:#bfb,stroke:#333
+    style REQ021 fill:#bfb,stroke:#333
+    style REQ022 fill:#bfb,stroke:#333
+    style REQ023 fill:#fbb,stroke:#333,stroke-width:2px
+    style REQ024 fill:#fbb,stroke:#333
+    style REQ025 fill:#fbb,stroke:#333
+    style REQ026 fill:#fbb,stroke:#333
 ```
 
 **Critical Path:** REQ-001 → REQ-002 → REQ-003/REQ-004 → REQ-005/REQ-006
+
+**Phase 5a Path:** REQ-001 → REQ-014 → REQ-015/REQ-016/REQ-017/REQ-018/REQ-019
+
+**Phase 5b Path:** REQ-016 → REQ-020 → REQ-022; REQ-018 → REQ-021 → REQ-022
+
+**Phase 6 Path:** REQ-001 + REQ-022 → REQ-023 → REQ-024/REQ-025; REQ-022 → REQ-026
 
 ---
 
@@ -100,19 +218,65 @@ graph TD
 - **REQ-012**: GitHub Integration
 - **REQ-013**: Feedback Loops
 
+### Phase 5: Context Engineering (Est. 31 days)
+
+> **Key Insight:** Most capabilities already exist in draagon-ai. This phase is primarily
+> about exposing existing functionality through MCP tools and adding semantic enhancements.
+
+#### Phase 5a: Token Optimization (17 days)
+
+| Sub-phase | Requirements | Effort | Focus |
+|-----------|--------------|--------|-------|
+| 5a.1: Foundation | REQ-015, REQ-016 | 8 days | Token reduction, history search |
+| 5a.2: Intelligence | REQ-017, REQ-018 | 6 days | Adaptive processing, quality |
+| 5a.3: Output Mgmt | REQ-019 | 3 days | File-based outputs |
+
+#### Phase 5b: Semantic Enhancement (14 days)
+
+| Sub-phase | Requirements | Effort | Focus |
+|-----------|--------------|--------|-------|
+| 5b.1: Bundles | REQ-020 | 5 days | Episodic operation capture, session replay |
+| 5b.2: Priming | REQ-021 | 4 days | Dynamic context assembly, success weighting |
+| 5b.3: Multi-Agent | REQ-022 | 5 days | Finding publication, expertise routing |
+
+### Phase 6: Self-Improvement & Multi-Agent (Est. 35 days)
+
+> **Key Innovation:** This phase makes Draagon Forge **self-improving**. Unlike static AI tools,
+> behaviors evolve based on outcomes and new capabilities can be created through conversation.
+
+| Sub-phase | Requirements | Effort | Focus |
+|-----------|--------------|--------|-------|
+| 6.1: Behavior Architect | REQ-023 | 12 days | Create agents via conversation |
+| 6.2: Evolution | REQ-024 | 8 days | Self-improving prompts |
+| 6.3: Cognitive Swarm | REQ-025 | 10 days | Multi-agent coordination |
+| 6.4: Reflection | REQ-026 | 5 days | Automatic post-task learning |
+
+**Expected Outcomes:**
+- Create new agents through natural conversation
+- Behaviors improve automatically with use (>20% improvement over time)
+- Multi-agent tasks complete faster than sequential (>40% speedup)
+- Automatic learning extraction (>70% of insights captured)
+
+#### Phase 5 Expected Outcomes:
+- ~47% reduction in MCP token usage
+- Improved context relevance (>85%)
+- Automatic session reconstruction
+- Cross-agent knowledge sharing
+- Learning from outcomes
+
 ---
 
 ## Constitution Compliance Summary
 
 All requirements validated against Draagon Forge constitution:
 
-| Principle | REQ-001 | REQ-002 | REQ-003 | REQ-004 | REQ-005 |
-|-----------|---------|---------|---------|---------|---------|
-| LLM-First Architecture | ✅ | N/A | ✅ | ✅ | ✅ |
-| XML Output Format | ✅ | N/A | ✅ | ✅ | ✅ |
-| Protocol-Based Design | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Async-First Processing | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Test Outcomes | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Principle | REQ-001 | REQ-002 | REQ-003 | REQ-004 | REQ-005 | REQ-014-022 |
+|-----------|---------|---------|---------|---------|---------|-------------|
+| LLM-First Architecture | ✅ | N/A | ✅ | ✅ | ✅ | ✅ |
+| XML Output Format | ✅ | N/A | ✅ | ✅ | ✅ | ✅ |
+| Protocol-Based Design | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Async-First Processing | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Test Outcomes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ---
 
@@ -120,12 +284,109 @@ All requirements validated against Draagon Forge constitution:
 
 | Metric | Target | Primary REQ |
 |--------|--------|-------------|
-| Context Relevance | >85% | REQ-001 |
+| Context Relevance | >85% | REQ-001, REQ-018, REQ-021 |
 | Correction Detection | >90% | REQ-004 |
 | Architectural Violations Caught | >80% | REQ-010 |
 | PR Review Accuracy | >75% | REQ-009 |
-| Learning Persistence | >70% | REQ-013 |
+| Learning Persistence | >70% | REQ-013, REQ-020 |
 | Developer Adoption | >60% | REQ-002 |
+| **Token Usage Reduction** | **>40%** | **REQ-015** |
+| **Retrieval Quality Score** | **>0.8** | **REQ-018** |
+| **Adaptive Skip Rate** | **>50%** | **REQ-017** |
+| **Session Reconstruction Accuracy** | **>70%** | **REQ-020** |
+| **Cross-Agent Discovery Rate** | **>80%** | **REQ-022** |
+| **Expertise Routing Accuracy** | **>75%** | **REQ-022** |
+| **Behavior Creation Success** | **>80%** | **REQ-023** |
+| **Prompt Evolution Improvement** | **>20%** | **REQ-024** |
+| **Swarm Speedup vs Sequential** | **>40%** | **REQ-025** |
+| **Learning Extraction Rate** | **>70%** | **REQ-026** |
+
+---
+
+## draagon-ai Integration Matrix
+
+**Key Principle:** Use draagon-ai models directly, don't reinvent.
+
+### Core Models (USE DIRECTLY)
+
+| draagon-ai Model | Location | Draagon Forge Usage |
+|------------------|----------|---------------------|
+| `Memory` | `memory/base.py` | Base storage unit |
+| `MemoryType` | `memory/base.py` | FACT, BELIEF, OBSERVATION, INSIGHT, SKILL |
+| `MemoryScope` | `memory/base.py` | WORLD, CONTEXT, AGENT, SESSION |
+| `AgentBelief` | `core/types.py` | Belief with confidence |
+| `BeliefType` | `core/types.py` | Extend with PRINCIPLE, PATTERN, LEARNING |
+| `UserObservation` | `core/types.py` | Raw input before reconciliation |
+| `SharedObservation` | `orchestration/shared_memory.py` | Multi-agent observations |
+| `SharedWorkingMemory` | `orchestration/shared_memory.py` | Multi-agent coordination |
+| `TransactiveMemory` | `orchestration/transactive_memory.py` | Expertise tracking |
+| `ExpertiseEntry` | `orchestration/transactive_memory.py` | Agent expertise scores |
+| `Learning` | `orchestration/learning_channel.py` | Cross-agent learnings |
+| `LearningChannel` | `orchestration/learning_channel.py` | Pub/sub for learnings |
+| `MemoryProvider` | `memory/providers/` | Storage backend (Neo4j) |
+
+### REQ → draagon-ai Mapping
+
+| Requirement | draagon-ai Component | Integration Type |
+|-------------|---------------------|------------------|
+| REQ-001 | `Memory`, `AgentBelief`, `MemoryProvider` | Wrap with MCP tools |
+| REQ-005 | `AgentBelief`, `BeliefType` | UI layer on REQ-001 |
+| REQ-015 | `tools/decorator.py` ToolRegistry | Expose via MCP |
+| REQ-016 | `memory/base.py` MemoryType.EPISODIC | Expose via MCP |
+| REQ-017 | `orchestration/loop.py` _check_if_expansion_needed | Expose via MCP |
+| REQ-018 | `retrieval/retriever.py` HybridRetriever | Expose via MCP |
+| REQ-019 | N/A | New implementation |
+| REQ-020 | `Memory` with `MemoryType.EPISODIC` | Wrap with MCP tools |
+| REQ-021 | `memory/base.py` search + `retrieval/` | Compose & expose |
+| REQ-022 | `SharedObservation`, `TransactiveMemory` | Wrap with MCP tools |
+| REQ-023 | `docs/design/BEHAVIOR_SYSTEM_DESIGN.md` | Implement from design |
+| REQ-024 | `docs/design/BEHAVIOR_SYSTEM_DESIGN.md` | Implement from design |
+| REQ-025 | `SharedWorkingMemory`, `TransactiveMemory` | Extend & wrap |
+| REQ-026 | `Learning`, `LearningChannel`, `TransactiveMemory` | Wrap with MCP tools |
+
+### Draagon Forge Extensions (New)
+
+| Extension | Purpose | Base Model |
+|-----------|---------|------------|
+| `conviction: float` | Reinforcement score | Extends `AgentBelief` |
+| `ForgeBeliefType.PRINCIPLE` | Architectural rules | Extends `BeliefType` |
+| `ForgeBeliefType.PATTERN` | Code examples | Extends `BeliefType` |
+| `ForgeBeliefType.LEARNING` | Extracted insights | Extends `BeliefType` |
+| `TaskScopedWorkingMemory` | Task scoping | Extends `SharedWorkingMemory` |
+
+---
+
+## R&D Framework Summary
+
+From the Context Engineering framework, every technique fits into **Reduce** or **Delegate**:
+
+### Reduce (R) - Minimize tokens in primary context
+
+| Technique | REQ | Description |
+|-----------|-----|-------------|
+| Lazy MCP Loading | REQ-015 | Load tool descriptions on-demand |
+| Adaptive Context | REQ-017 | Skip retrieval for simple queries |
+| Quality Filtering | REQ-018 | Only include relevant results |
+| Dynamic Priming | REQ-021 | Query-based vs static files |
+
+### Delegate (D) - Offload to other contexts
+
+| Technique | REQ | Description |
+|-----------|-----|-------------|
+| File Outputs | REQ-019 | Large outputs to files for inspection |
+| Session Bundles | REQ-020 | Delegate history to semantic memory |
+| Cross-Agent Memory | REQ-022 | Delegate findings to shared memory |
+| Expertise Routing | REQ-022 | Delegate tasks to best agent |
+
+---
+
+## References
+
+- [Cursor: Dynamic Context Discovery](https://cursor.com/blog/dynamic-context-discovery)
+- [Context Engineering: R&D Framework](TAC Course)
+- [draagon-ai Documentation](../draagon-ai/docs/)
+- [MCP Specification](https://modelcontextprotocol.io/docs)
+- [CRAG Paper](https://arxiv.org/abs/2401.15884)
 
 ---
 
