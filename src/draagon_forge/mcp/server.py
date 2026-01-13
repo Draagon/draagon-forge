@@ -11,6 +11,8 @@ Usage:
 """
 
 import asyncio
+import time
+import uuid
 import structlog
 from fastmcp import FastMCP
 
@@ -20,6 +22,9 @@ from draagon_forge.mcp.config import config
 # Import agent (creates shared memory)
 from draagon_forge.agent import create_forge_agent
 from draagon_forge.agent.forge_agent import get_shared_memory
+
+# Import event system for Inspector
+from draagon_forge.api.events import EventType, emit_event
 
 # Initialize structured logging
 structlog.configure(
@@ -60,13 +65,40 @@ async def search_context(
     Returns:
         List of relevant context items with scores
     """
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+
+    # Emit tool called event
+    asyncio.create_task(emit_event(
+        EventType.MCP_TOOL_CALLED,
+        {"tool": "search_context", "args": {"query": query, "limit": limit, "domain": domain}},
+        source="mcp",
+        request_id=request_id,
+        user_id=config.user_id,
+    ))
+
     memory = get_shared_memory()
     if memory is None:
         logger.warning("Memory not initialized - returning empty results")
+        asyncio.create_task(emit_event(
+            EventType.MCP_TOOL_ERROR,
+            {"tool": "search_context", "error": "Memory not initialized"},
+            source="mcp",
+            request_id=request_id,
+        ))
         return []
 
     # Optionally filter by domain in query
     search_query = f"{domain}: {query}" if domain else query
+
+    # Emit memory search event
+    asyncio.create_task(emit_event(
+        EventType.MEMORY_SEARCH,
+        {"query": search_query, "limit": limit},
+        source="memory",
+        request_id=request_id,
+        user_id=config.user_id,
+    ))
 
     # Search with proper user/agent scoping
     results = await memory.search(
@@ -76,7 +108,8 @@ async def search_context(
         agent_id=config.agent_id,
     )
 
-    return [
+    duration_ms = (time.time() - start_time) * 1000
+    result_list = [
         {
             "id": str(r.id) if hasattr(r, "id") else str(i),
             "content": r.content if hasattr(r, "content") else str(r),
@@ -87,6 +120,18 @@ async def search_context(
         }
         for i, r in enumerate(results)
     ]
+
+    # Emit tool result event
+    asyncio.create_task(emit_event(
+        EventType.MCP_TOOL_RESULT,
+        {"tool": "search_context", "result_count": len(result_list)},
+        source="mcp",
+        duration_ms=duration_ms,
+        request_id=request_id,
+        user_id=config.user_id,
+    ))
+
+    return result_list
 
 
 @mcp.tool()
@@ -144,6 +189,17 @@ async def query_beliefs(
     Returns:
         List of beliefs with conviction scores
     """
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+
+    asyncio.create_task(emit_event(
+        EventType.MCP_TOOL_CALLED,
+        {"tool": "query_beliefs", "args": {"query": query, "category": category, "limit": limit}},
+        source="mcp",
+        request_id=request_id,
+        user_id=config.user_id,
+    ))
+
     memory = get_shared_memory()
     if memory is None:
         return []
@@ -158,7 +214,8 @@ async def query_beliefs(
         memory_types=[MemoryType.BELIEF],
     )
 
-    return [
+    duration_ms = (time.time() - start_time) * 1000
+    result_list = [
         {
             "id": str(r.id) if hasattr(r, "id") else str(i),
             "content": r.content if hasattr(r, "content") else str(r),
@@ -168,6 +225,16 @@ async def query_beliefs(
         }
         for i, r in enumerate(results)
     ]
+
+    asyncio.create_task(emit_event(
+        EventType.MCP_TOOL_RESULT,
+        {"tool": "query_beliefs", "result_count": len(result_list)},
+        source="mcp",
+        duration_ms=duration_ms,
+        request_id=request_id,
+    ))
+
+    return result_list
 
 
 @mcp.tool()
@@ -192,6 +259,17 @@ async def add_belief(
     Returns:
         Status of the storage operation
     """
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+
+    asyncio.create_task(emit_event(
+        EventType.MCP_TOOL_CALLED,
+        {"tool": "add_belief", "args": {"content": content[:100], "category": category, "domain": domain, "conviction": conviction}},
+        source="mcp",
+        request_id=request_id,
+        user_id=config.user_id,
+    ))
+
     memory = get_shared_memory()
     if memory is None:
         return {"error": "Memory not initialized"}
@@ -212,6 +290,26 @@ async def add_belief(
             "rationale": rationale,
         },
     )
+
+    duration_ms = (time.time() - start_time) * 1000
+
+    # Emit memory store event
+    asyncio.create_task(emit_event(
+        EventType.MEMORY_STORE,
+        {"type": "BELIEF", "content": content[:100], "conviction": conviction},
+        source="memory",
+        duration_ms=duration_ms,
+        request_id=request_id,
+        user_id=config.user_id,
+    ))
+
+    asyncio.create_task(emit_event(
+        EventType.MCP_TOOL_RESULT,
+        {"tool": "add_belief", "status": "stored"},
+        source="mcp",
+        duration_ms=duration_ms,
+        request_id=request_id,
+    ))
 
     return {
         "status": "stored",
@@ -240,6 +338,17 @@ async def store_learning(
     Returns:
         Status of the storage operation
     """
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+
+    asyncio.create_task(emit_event(
+        EventType.MCP_TOOL_CALLED,
+        {"tool": "store_learning", "args": {"content": content[:100], "source": source, "conviction": conviction}},
+        source="mcp",
+        request_id=request_id,
+        user_id=config.user_id,
+    ))
+
     memory = get_shared_memory()
     if memory is None:
         return {"error": "Memory not initialized"}
@@ -259,6 +368,25 @@ async def store_learning(
             "conviction": conviction,
         },
     )
+
+    duration_ms = (time.time() - start_time) * 1000
+
+    asyncio.create_task(emit_event(
+        EventType.MEMORY_STORE,
+        {"type": "INSIGHT", "content": content[:100], "conviction": conviction},
+        source="memory",
+        duration_ms=duration_ms,
+        request_id=request_id,
+        user_id=config.user_id,
+    ))
+
+    asyncio.create_task(emit_event(
+        EventType.MCP_TOOL_RESULT,
+        {"tool": "store_learning", "status": "stored"},
+        source="mcp",
+        duration_ms=duration_ms,
+        request_id=request_id,
+    ))
 
     return {
         "status": "stored",

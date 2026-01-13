@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { createMCPClient, MCPClient } from './mcp';
 import { createForgeAPIClient, ForgeAPIClient } from './api';
 import { PanelManager, ChatViewProvider } from './panel';
+import { InspectorViewProvider, MemoryViewProvider } from './providers';
 import { StatusBarManager } from './statusBar';
 import { registerCommands } from './commands';
 import { validateConfig } from './utils/config';
@@ -18,6 +19,7 @@ let statusBar: StatusBarManager;
 let mcpClient: MCPClient | null = null;
 let apiClient: ForgeAPIClient;
 let panelManager: PanelManager;
+let memoryViewProvider: MemoryViewProvider;
 
 /**
  * Called when the extension is activated.
@@ -85,7 +87,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         panelManager = new PanelManager(context, apiClient, mcpClient);
         context.subscriptions.push(panelManager);
 
-        // 5. Register sidebar webview provider (uses API client for chat)
+        // 5. Register sidebar view providers
+        const config = vscode.workspace.getConfiguration('draagon-forge');
+        const apiUrl = config.get<string>('apiUrl', 'http://localhost:8765');
+
+        // Chat view (webview)
         const chatViewProvider = new ChatViewProvider(context.extensionUri, apiClient);
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
@@ -94,8 +100,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             )
         );
 
+        // Inspector view (webview for real-time events)
+        const inspectorViewProvider = new InspectorViewProvider(context.extensionUri, apiUrl);
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider(
+                InspectorViewProvider.viewType,
+                inspectorViewProvider
+            )
+        );
+
+        // Memory view (tree view for beliefs/insights)
+        memoryViewProvider = new MemoryViewProvider(apiUrl);
+        context.subscriptions.push(
+            vscode.window.registerTreeDataProvider(
+                'draagon-forge.memoryView',
+                memoryViewProvider
+            )
+        );
+
+        // Initial memory load
+        memoryViewProvider.refresh();
+
         // 6. Register commands (uses both API and MCP clients)
-        const commands = registerCommands(context, apiClient, mcpClient, panelManager);
+        const commands = registerCommands(context, apiClient, mcpClient, panelManager, memoryViewProvider);
         context.subscriptions.push(...commands);
 
         // 7. Watch for configuration changes

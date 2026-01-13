@@ -97,6 +97,7 @@ Each REQ document follows spec kit standards with:
 | [REQ-025](./REQ-025-cognitive-swarm.md) | Cognitive Swarm Orchestration | P1 | High | Planned |
 | [REQ-026](./REQ-026-metacognitive-reflection.md) | Metacognitive Reflection | P1 | Medium | Planned |
 | [REQ-027](./REQ-027-claude-code-integration.md) | Claude Code Integration | P0 | High | Planned |
+| [REQ-028](./REQ-028-multi-model-cost-optimization.md) | Multi-Model Cost Optimization | P0 | Medium | Planned |
 
 **Key Capabilities:**
 
@@ -107,6 +108,7 @@ Each REQ document follows spec kit standards with:
 | **Cognitive Swarm** | Multi-agent coordination with shared memory | Parallel execution, belief reconciliation |
 | **Metacognitive Reflection** | Automatic post-task learning | Patterns extracted, expertise updated |
 | **Claude Code Integration** | Bridge Claude subagents/skills with draagon-ai | Hybrid intelligence, feedback loops |
+| **Multi-Model Cost Optimization** | Tiered LLM routing (Groq → Sonnet → Opus) | ~90% cost reduction, quality preserved |
 
 ---
 
@@ -177,6 +179,10 @@ graph TD
     REQ022 --> REQ027
     REQ023 --> REQ027
 
+    %% Multi-Model Cost Optimization
+    REQ001 --> REQ028[REQ-028: Multi-Model Cost Optimization]
+    REQ027 --> REQ028
+
     style REQ014 fill:#f9f,stroke:#333,stroke-width:2px
     style REQ015 fill:#bbf,stroke:#333
     style REQ016 fill:#bbf,stroke:#333
@@ -191,6 +197,7 @@ graph TD
     style REQ025 fill:#fbb,stroke:#333
     style REQ026 fill:#fbb,stroke:#333
     style REQ027 fill:#fbf,stroke:#333,stroke-width:2px
+    style REQ028 fill:#ff9,stroke:#333,stroke-width:2px
 ```
 
 **Critical Path:** REQ-001 → REQ-002 → REQ-003/REQ-004 → REQ-005/REQ-006
@@ -249,12 +256,13 @@ graph TD
 | 5b.2: Priming | REQ-021 | 4 days | Dynamic context assembly, success weighting |
 | 5b.3: Multi-Agent | REQ-022 | 5 days | Finding publication, expertise routing |
 
-### Phase 6: Self-Improvement & Multi-Agent (Est. 47 days)
+### Phase 6: Self-Improvement & Multi-Agent (Est. 53 days)
 
 > **Key Innovation:** This phase makes Draagon Forge **self-improving**. Unlike static AI tools,
 > behaviors evolve based on outcomes and new capabilities can be created through conversation.
 > **Claude Code Integration** bridges the gap between Claude's native capabilities and draagon-ai's
-> sophisticated agent system.
+> sophisticated agent system. **Multi-Model Cost Optimization** ensures intelligent tasks use
+> appropriate models to minimize costs.
 
 | Sub-phase | Requirements | Effort | Focus |
 |-----------|--------------|--------|-------|
@@ -263,6 +271,7 @@ graph TD
 | 6.3: Cognitive Swarm | REQ-025 | 10 days | Multi-agent coordination |
 | 6.4: Reflection | REQ-026 | 5 days | Automatic post-task learning |
 | 6.5: Claude Integration | REQ-027 | 12 days | Bridge Claude subagents/skills with draagon-ai |
+| 6.6: Cost Optimization | REQ-028 | 6 days | Tiered LLM routing (Groq → Sonnet → Opus) |
 
 **Expected Outcomes:**
 - Create new agents through natural conversation
@@ -271,6 +280,7 @@ graph TD
 - Automatic learning extraction (>70% of insights captured)
 - Hybrid Claude/draagon-ai agents with expertise routing (>75% accuracy)
 - Feedback loops close within 5 seconds
+- ~90% cost reduction via intelligent model routing
 
 #### Phase 5 Expected Outcomes:
 - ~47% reduction in MCP token usage

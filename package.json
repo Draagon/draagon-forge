@@ -75,6 +75,39 @@
                 "command": "draagon-forge.refresh",
                 "title": "Draagon Forge: Refresh",
                 "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.refreshMemory",
+                "title": "Draagon Forge: Refresh Memory",
+                "category": "Draagon Forge",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "draagon-forge.searchMemory",
+                "title": "Draagon Forge: Search Memory",
+                "category": "Draagon Forge",
+                "icon": "$(search)"
+            },
+            {
+                "command": "draagon-forge.addBelief",
+                "title": "Draagon Forge: Add Belief",
+                "category": "Draagon Forge",
+                "icon": "$(add)"
+            },
+            {
+                "command": "draagon-forge.showMemoryDetail",
+                "title": "Draagon Forge: Show Memory Detail",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.reinforceBelief",
+                "title": "Draagon Forge: Reinforce Belief (+5%)",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.weakenBelief",
+                "title": "Draagon Forge: Weaken Belief (-8%)",
+                "category": "Draagon Forge"
             }
         ],
         "viewsContainers": {
@@ -92,6 +125,47 @@
                     "type": "webview",
                     "id": "draagon-forge.chatView",
                     "name": "Chat"
+                },
+                {
+                    "type": "webview",
+                    "id": "draagon-forge.inspectorView",
+                    "name": "Inspector"
+                },
+                {
+                    "type": "tree",
+                    "id": "draagon-forge.memoryView",
+                    "name": "Memory"
+                }
+            ]
+        },
+        "menus": {
+            "view/title": [
+                {
+                    "command": "draagon-forge.refreshMemory",
+                    "when": "view == draagon-forge.memoryView",
+                    "group": "navigation"
+                },
+                {
+                    "command": "draagon-forge.searchMemory",
+                    "when": "view == draagon-forge.memoryView",
+                    "group": "navigation"
+                },
+                {
+                    "command": "draagon-forge.addBelief",
+                    "when": "view == draagon-forge.memoryView",
+                    "group": "navigation"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "draagon-forge.reinforceBelief",
+                    "when": "view == draagon-forge.memoryView && viewItem == memoryItem",
+                    "group": "inline"
+                },
+                {
+                    "command": "draagon-forge.weakenBelief",
+                    "when": "view == draagon-forge.memoryView && viewItem == memoryItem",
+                    "group": "inline"
                 }
             ]
         },

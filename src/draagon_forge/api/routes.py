@@ -293,3 +293,101 @@ async def search_context(
 
     results = await search.search_context(query, limit=limit, domain=domain)
     return {"results": results, "count": len(results)}
+
+
+@router.get("/memory")
+async def list_memory(
+    memory_type: str | None = None,
+    domain: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """List all memories, optionally filtered.
+
+    Args:
+        memory_type: Filter by type (belief, insight, knowledge, skill)
+        domain: Filter by domain
+        limit: Maximum results
+
+    Returns:
+        List of memories
+    """
+    from draagon_forge.agent.forge_agent import get_shared_memory
+    from draagon_forge.mcp.config import config
+
+    memory = get_shared_memory()
+    if memory is None:
+        return {"memories": [], "count": 0}
+
+    # Build query based on filters
+    query_parts = []
+    if memory_type:
+        query_parts.append(memory_type)
+    if domain:
+        query_parts.append(domain)
+
+    query = " ".join(query_parts) if query_parts else "*"
+
+    results = await memory.search(
+        query,
+        limit=limit,
+        user_id=config.user_id,
+        agent_id=config.agent_id,
+    )
+
+    memories = [
+        {
+            "id": str(r.id) if hasattr(r, "id") else str(i),
+            "content": r.content if hasattr(r, "content") else str(r),
+            "type": r.metadata.get("type", "memory") if hasattr(r, "metadata") else "memory",
+            "domain": r.metadata.get("domain") if hasattr(r, "metadata") else None,
+            "category": r.metadata.get("category") if hasattr(r, "metadata") else None,
+            "conviction": r.metadata.get("conviction", 0.7) if hasattr(r, "metadata") else 0.7,
+            "score": r.score if hasattr(r, "score") else 0.8,
+            "source": r.metadata.get("source", "agent") if hasattr(r, "metadata") else "agent",
+        }
+        for i, r in enumerate(results)
+    ]
+
+    return {"memories": memories, "count": len(memories)}
+
+
+@router.put("/beliefs/{belief_id}/conviction")
+async def adjust_belief_conviction(
+    belief_id: str,
+    delta: float,
+) -> dict[str, Any]:
+    """Adjust a belief's conviction score.
+
+    Args:
+        belief_id: ID of the belief to adjust
+        delta: Amount to adjust (-0.1 to +0.1 typical)
+
+    Returns:
+        Updated belief info
+    """
+    # TODO: Implement actual conviction adjustment in memory
+    # For now, return a placeholder response
+    return {
+        "status": "adjusted",
+        "belief_id": belief_id,
+        "delta": delta,
+        "message": "Conviction adjustment not yet implemented",
+    }
+
+
+@router.delete("/memory/{memory_id}")
+async def delete_memory(memory_id: str) -> dict[str, Any]:
+    """Delete a memory by ID.
+
+    Args:
+        memory_id: ID of the memory to delete
+
+    Returns:
+        Deletion status
+    """
+    # TODO: Implement actual deletion in memory provider
+    return {
+        "status": "deleted",
+        "memory_id": memory_id,
+        "message": "Memory deletion not yet implemented",
+    }

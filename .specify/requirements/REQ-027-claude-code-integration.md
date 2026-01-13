@@ -766,7 +766,238 @@ async def get_sync_status() -> dict:
 - [ ] Generated subagents have feedback hooks
 - [ ] `get_sync_status` shows sync state accurately
 
-### REQ-027.4: Outcome Reporting and Learning
+### REQ-027.4: File Access Architecture
+
+Define how Claude Code subagents and draagon-ai share file operations.
+
+#### Key Principle
+
+> **Claude Code handles file I/O, draagon-ai handles semantic analysis.**
+
+Claude Code subagents have direct access to file tools (Read, Write, Edit, Glob, Grep). draagon-ai agents analyze content passed via MCP and return structured suggestions. This separation ensures:
+
+1. **Security**: File access is managed by Claude Code's permission system
+2. **Simplicity**: draagon-ai doesn't need filesystem access
+3. **Flexibility**: Analysis is decoupled from I/O
+
+#### File Access Pattern
+
+```python
+@mcp.tool()
+async def analyze_code(
+    content: str,
+    file_path: str,
+    domain: str | None = None,
+    analysis_type: str = "review",  # "review" | "security" | "performance" | "architecture"
+) -> dict:
+    """Analyze code content and return structured suggestions.
+
+    Claude Code reads the file, passes content here for analysis.
+    Returns suggestions that Claude Code can apply.
+
+    Args:
+        content: The file content to analyze
+        file_path: Original path (for context)
+        domain: Domain hint for agent selection
+        analysis_type: Type of analysis to perform
+
+    Returns:
+        Analysis results with suggested edits
+    """
+    # 1. Select best agent for this analysis
+    agent = await select_agent_for_domain(domain or analysis_type)
+
+    # 2. Load relevant beliefs/patterns
+    context = await search_context(
+        query=f"{analysis_type} {domain or 'general'}",
+        limit=10,
+    )
+
+    # 3. Perform analysis
+    analysis = await agent.analyze(
+        content=content,
+        file_path=file_path,
+        context=context,
+        analysis_type=analysis_type,
+    )
+
+    # 4. Return structured suggestions
+    return {
+        "file_path": file_path,
+        "findings": [
+            {
+                "type": f.finding_type,  # "issue" | "suggestion" | "warning"
+                "severity": f.severity,  # "critical" | "high" | "medium" | "low"
+                "line_start": f.line_start,
+                "line_end": f.line_end,
+                "message": f.message,
+                "reasoning": f.reasoning,
+            }
+            for f in analysis.findings
+        ],
+        "suggested_edits": [
+            {
+                "old_string": e.old_string,
+                "new_string": e.new_string,
+                "reason": e.reason,
+                "confidence": e.confidence,
+            }
+            for e in analysis.suggested_edits
+        ],
+        "agent_id": agent.agent_id,
+        "expertise_score": agent.expertise_score,
+    }
+
+@mcp.tool()
+async def analyze_diff(
+    diff: str,
+    base_path: str,
+    domain: str | None = None,
+) -> dict:
+    """Analyze a git diff for issues.
+
+    Claude Code generates the diff, passes it here for review.
+    Useful for pre-commit hooks and PR reviews.
+
+    Args:
+        diff: The git diff content
+        base_path: Repository base path
+        domain: Domain hint
+
+    Returns:
+        Analysis of the changes
+    """
+    agent = await select_agent_for_domain("code-review")
+
+    # Parse diff to understand changes
+    changes = parse_diff(diff)
+
+    # Analyze each changed file
+    findings = []
+    for change in changes:
+        result = await agent.analyze_change(
+            file_path=change.file_path,
+            additions=change.additions,
+            deletions=change.deletions,
+            context=change.context_lines,
+        )
+        findings.extend(result.findings)
+
+    return {
+        "files_analyzed": len(changes),
+        "total_findings": len(findings),
+        "findings": [f.to_dict() for f in findings],
+        "summary": await agent.summarize_findings(findings),
+        "should_block": any(f.severity == "critical" for f in findings),
+    }
+
+@mcp.tool()
+async def suggest_file_edits(
+    task_description: str,
+    file_contents: dict[str, str],  # path -> content
+    domain: str | None = None,
+) -> dict:
+    """Given a task and file contents, suggest edits to implement it.
+
+    Claude Code reads files and passes contents. draagon-ai suggests
+    the edits. Claude Code applies them.
+
+    Args:
+        task_description: What needs to be done
+        file_contents: Map of file paths to their contents
+        domain: Domain hint
+
+    Returns:
+        Suggested edits per file
+    """
+    agent = await select_agent_for_domain(domain or "development")
+
+    # Plan the implementation
+    plan = await agent.plan_implementation(
+        task=task_description,
+        files=file_contents,
+    )
+
+    # Generate edits for each file
+    edits_by_file = {}
+    for file_path, content in file_contents.items():
+        if file_path in plan.files_to_modify:
+            edits = await agent.generate_edits(
+                file_path=file_path,
+                content=content,
+                instructions=plan.instructions_for_file(file_path),
+            )
+            edits_by_file[file_path] = [
+                {
+                    "old_string": e.old_string,
+                    "new_string": e.new_string,
+                    "reason": e.reason,
+                }
+                for e in edits
+            ]
+
+    return {
+        "task": task_description,
+        "plan_summary": plan.summary,
+        "files_to_modify": list(edits_by_file.keys()),
+        "edits": edits_by_file,
+        "new_files_suggested": plan.new_files,
+    }
+```
+
+#### Workflow: Claude Code + draagon-ai File Operations
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                         CLAUDE CODE (Shell)                               │
+│  1. User asks: "Review the auth module for security issues"               │
+│                                                                           │
+│  2. Claude reads files:                                                   │
+│     contents = Read("src/auth/*.py")                                      │
+│                                                                           │
+│  3. Claude calls MCP tool:                                                │
+│     result = analyze_code(                                                │
+│         content=contents["src/auth/login.py"],                            │
+│         file_path="src/auth/login.py",                                    │
+│         domain="security",                                                │
+│         analysis_type="security"                                          │
+│     )                                                                     │
+│                                                                           │
+│  4. Claude applies suggested edits:                                       │
+│     for edit in result["suggested_edits"]:                                │
+│         Edit(                                                             │
+│             file_path="src/auth/login.py",                                │
+│             old_string=edit["old_string"],                                │
+│             new_string=edit["new_string"]                                 │
+│         )                                                                 │
+│                                                                           │
+│  5. Claude reports outcome:                                               │
+│     report_outcome(agent_id=result["agent_id"], success=True, ...)        │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ MCP Protocol
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                      DRAAGON-AI (Brain via MCP)                           │
+│                                                                           │
+│  analyze_code():                                                          │
+│    1. Select security expert agent (TransactiveMemory)                    │
+│    2. Load security beliefs/patterns (search_context)                     │
+│    3. Analyze content with agent (LLM-based, not regex)                   │
+│    4. Return structured findings + suggested edits                        │
+│                                                                           │
+│  (No file system access - receives content, returns analysis)             │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Acceptance Criteria:**
+- [ ] `analyze_code` returns structured findings and edits
+- [ ] `analyze_diff` works with git diff output
+- [ ] `suggest_file_edits` plans multi-file changes
+- [ ] All tools receive content, not file paths to read
+- [ ] Suggested edits are in Claude Code Edit tool format
+
+### REQ-027.5: Outcome Reporting and Learning
 
 Close the feedback loop between Claude Code execution and draagon-ai learning.
 
@@ -960,6 +1191,9 @@ async def report_behavior_feedback(
 │  │  ├── sync_to_claude_agents() - Generate subagent files               │  │
 │  │  ├── sync_to_claude_skills() - Generate skill directories            │  │
 │  │  ├── get_sync_status()       - Check sync state                      │  │
+│  │  ├── analyze_code()          - Analyze content, return edits         │  │
+│  │  ├── analyze_diff()          - Review git diff for issues            │  │
+│  │  ├── suggest_file_edits()    - Plan multi-file changes               │  │
 │  │  ├── report_outcome()        - Feed back results                     │  │
 │  │  └── report_behavior_feedback() - Improve via feedback               │  │
 │  └──────────────────────────────────────────────────────────────────────┘  │
@@ -994,7 +1228,8 @@ src/draagon_forge/mcp/tools/
 ├── agents.py           # REQ-027.1: select_agent, delegate_to_expert
 ├── behaviors.py        # REQ-027.2: list_behaviors, create_behavior, evolve
 ├── claude_sync.py      # REQ-027.3: sync_to_claude_agents, sync_to_claude_skills
-└── feedback.py         # REQ-027.4: report_outcome, report_behavior_feedback
+├── file_analysis.py    # REQ-027.4: analyze_code, analyze_diff, suggest_file_edits
+└── feedback.py         # REQ-027.5: report_outcome, report_behavior_feedback
 ```
 
 ### Workflow: Creating a New Agent via Conversation
