@@ -11,6 +11,7 @@ This module contains all MCP tool implementations:
 - watchlist: Watch rule management
 - review: Review queue management
 - chat: Conversational interface with Forge agent
+- code_review: Scalable code review with tiered processing
 """
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "watchlist",
     "review",
     "chat",
+    "code_review",
 ]

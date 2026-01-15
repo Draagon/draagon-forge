@@ -87,6 +87,13 @@ See [REQ-031: Extension Architecture](./REQ-031-extension-architecture.md) for d
 | [REQ-009](./REQ-009-pr-analyzer-agent.md) | PR Analyzer Agent | P1 | High | Planned |
 | [REQ-010](./REQ-010-architectural-auditor.md) | Architectural Auditor Agent | P2 | Very High | Planned |
 | [REQ-011](./REQ-011-commit-auditor.md) | Developer Commit Auditor | P1 | High | Planned |
+| [REQ-033](./REQ-033-code-review-agent.md) | **Scalable Code Review Subagent** | P0 | High | **Draft** |
+
+> **REQ-033 Note:** This is the scalable implementation design for code review that handles:
+> - Large diffs (200+ files) via tiered processing
+> - Multiple input modes (staged, unstaged, branch)
+> - Memory-integrated review with principle checking
+> - Chunking strategies to avoid context overflow
 
 ### Phase 4: Integration
 
