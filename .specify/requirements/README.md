@@ -87,13 +87,20 @@ See [REQ-031: Extension Architecture](./REQ-031-extension-architecture.md) for d
 | [REQ-009](./REQ-009-pr-analyzer-agent.md) | PR Analyzer Agent | P1 | High | Planned |
 | [REQ-010](./REQ-010-architectural-auditor.md) | Architectural Auditor Agent | P2 | Very High | Planned |
 | [REQ-011](./REQ-011-commit-auditor.md) | Developer Commit Auditor | P1 | High | Planned |
-| [REQ-033](./REQ-033-code-review-agent.md) | **Scalable Code Review Subagent** | P0 | High | **Draft** |
+| [REQ-033a](./REQ-033-code-review-agent.md) | **Scalable Code Review Subagent** | P0 | High | **Draft** |
+| [REQ-033b](./REQ-033-code-knowledge-mesh.md) | **Code Knowledge Mesh** | P0 | Very High | **Draft** |
 
-> **REQ-033 Note:** This is the scalable implementation design for code review that handles:
+> **REQ-033a Note:** Scalable code review implementation:
 > - Large diffs (200+ files) via tiered processing
 > - Multiple input modes (staged, unstaged, branch)
 > - Memory-integrated review with principle checking
 > - Chunking strategies to avoid context overflow
+
+> **REQ-033b Note:** Code Knowledge Mesh with agentic extraction:
+> - **Three-Tier Detection**: Schema (fast) → AI-assisted → AI-discovery (self-learning)
+> - **Project Registry**: Auto-pull git repos, incremental re-extraction
+> - **Cross-Codebase Linking**: Queue/API/database relationships across repos
+> - **Documentation as Queries**: Always-current docs generated from graph
 
 ### Phase 4: Integration
 

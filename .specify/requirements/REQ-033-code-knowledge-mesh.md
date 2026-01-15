@@ -1,72 +1,133 @@
 # REQ-033: Code Knowledge Mesh
 
 **Status:** Draft
-**Priority:** High
+**Priority:** P0
 **Created:** 2025-01-14
+**Revised:** 2026-01-15
 **Author:** Doug / Claude
+**Depends On:** REQ-001 (MCP Context Server)
+**Layer:** 🟢 L3 (draagon-forge) - Programming-specific
+
+---
 
 ## Summary
 
-Build a unified **Code Knowledge Mesh** that combines static code analysis with semantic understanding, creating a queryable graph of code structure, data flows, dependencies, and architectural knowledge. This enables Claude Code to understand codebases at a structural level rather than relying on text search.
+Build a unified **Code Knowledge Mesh** - a multi-layer knowledge graph of code structure, data flows, dependencies, and cross-service relationships. The mesh is built using an **agentic three-tier extraction system** (schema-based → AI-assisted → AI-discovery) that learns and adapts to new languages/frameworks automatically.
+
+**Key Capabilities:**
+- **Structural Intelligence**: Understand call graphs, data flows, dependencies
+- **Cross-Codebase Linking**: Track queue/API/database relationships across repos
+- **Self-Learning Extraction**: AI discovers new patterns and generates schemas
+- **Documentation as Queries**: Always-current docs generated from graph
+- **Project Registry**: Auto-pull and re-extract git repos on changes
+
+---
 
 ## Problem Statement
 
-Current code intelligence (including Claude Code) relies heavily on:
-- **grep/ripgrep** - Text pattern matching, no semantic understanding
-- **LSP** - Single-file focus, limited cross-file intelligence
-- **RAG** - Semantic similarity on code chunks, loses structural relationships
+### Why Current Tools Fail
 
-This misses:
-- How data flows through the system
-- What calls what (and from where)
-- How code connects to data stores
-- Library/framework semantic patterns
-- Cross-repo and ecosystem dependencies
-- Version-aware API evolution
+| Tool | What it Does | What it Misses |
+|------|--------------|----------------|
+| **grep/ripgrep** | Text pattern matching | Semantic relationships, cross-file flows |
+| **LSP** | Single-file intelligence | Cross-repo dependencies, data flows |
+| **RAG on code** | Semantic similarity chunks | Structural relationships, call graphs |
+| **Static analyzers** | Language-specific parsing | Cross-language, framework patterns |
 
-## Vision
+### The Cross-Codebase Problem
 
-A multi-layer knowledge graph that Claude can query to understand:
+Modern systems are distributed. Understanding requires:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     SEMANTIC LAYER                               │
-│   Beliefs, Principles, Patterns, Architectural Decisions        │
-│   "This is the auth entry point" / "Always use prepared stmts"  │
-├─────────────────────────────────────────────────────────────────┤
-│                      CODE LAYER                                  │
-│   Functions, Classes, Modules, Files                            │
-│   With file:line references, signatures, docstrings             │
-├─────────────────────────────────────────────────────────────────┤
-│                    DATA FLOW LAYER                               │
-│   Call graphs, data dependencies, control flow                  │
-│   Request traces, queue flows, event propagation                │
-├─────────────────────────────────────────────────────────────────┤
-│                   DATA STORE LAYER                               │
-│   Databases, tables, columns, indexes                           │
-│   Redis keys, S3 buckets, Kafka topics                          │
-│   PII/PHI annotations on columns                                │
-├─────────────────────────────────────────────────────────────────┤
-│                    LIBRARY LAYER                                 │
-│   Pre-indexed open source (FastAPI, React, Spring, etc.)        │
-│   API schemas for closed source (Stripe, AWS, Twilio)           │
-│   Version-aware with deprecation/migration edges                │
-├─────────────────────────────────────────────────────────────────┤
-│                   ECOSYSTEM LAYER                                │
-│   Cross-repo dependencies, shared libraries                     │
-│   Microservice communication, API contracts                     │
-└─────────────────────────────────────────────────────────────────┘
+Service A (Python/FastAPI)          Service B (TypeScript/NestJS)
+┌─────────────────────────┐        ┌─────────────────────────┐
+│ def process_order():    │        │ @EventPattern('orders') │
+│   sqs.send_message(     │───────►│ handleOrder(data) {     │
+│     QueueUrl=ORDER_Q    │        │   // process order      │
+│   )                     │        │ }                       │
+└─────────────────────────┘        └─────────────────────────┘
+         │                                    │
+         ▼                                    ▼
+┌─────────────────────────┐        ┌─────────────────────────┐
+│   PostgreSQL            │        │   MongoDB               │
+│   orders table          │        │   order_events          │
+└─────────────────────────┘        └─────────────────────────┘
 ```
 
-## Requirements
+**Questions static analysis cannot answer:**
+- What consumes messages from `ORDER_Q`?
+- What happens if Service A's schema changes?
+- Which services access PHI data?
+- What's the end-to-end flow for an order?
 
-### R1: Code Structure Graph
+### The Framework Problem
 
-**R1.1: Node Types**
+New frameworks appear constantly:
+- Hardcoding parsers: 100K+ lines, always behind
+- Regex patterns: Break on edge cases, no semantics
+- Tree-sitter alone: AST only, no framework awareness
+
+**We need:** A system that learns new patterns with minimal upfront investment.
+
+---
+
+## Vision: Multi-Layer Knowledge Graph
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          CODE KNOWLEDGE MESH                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        SEMANTIC LAYER                                  │  │
+│  │   Beliefs, Principles, Patterns, Architectural Decisions              │  │
+│  │   "This is the auth entry point" / "Always use prepared statements"  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                         CODE LAYER                                     │  │
+│  │   Files, Functions, Classes, Modules, Routes                          │  │
+│  │   With file:line references, signatures, docstrings                   │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                       DATA FLOW LAYER                                  │  │
+│  │   Call graphs, request traces, queue flows, event propagation         │  │
+│  │   Producer → Queue → Consumer chains across services                  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                      DATA STORE LAYER                                  │  │
+│  │   Databases, tables, columns (with PII/PHI tags)                      │  │
+│  │   Redis keys, S3 buckets, Kafka topics, queues                        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                       LIBRARY LAYER                                    │  │
+│  │   Pre-indexed open source (FastAPI, React, Spring)                    │  │
+│  │   API schemas for closed source (Stripe, AWS, Twilio)                 │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                      ECOSYSTEM LAYER                                   │  │
+│  │   Cross-repo dependencies, microservice topology                      │  │
+│  │   Shared libraries, API contracts, message contracts                  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Part 1: Graph Schema
+
+### R1: Code Structure Nodes
+
+**R1.1: Core Node Types**
 
 | Node Type | Properties | Source |
 |-----------|------------|--------|
-| `File` | path, language, size, last_modified | File system |
+| `File` | path, language, size, last_modified, git_commit | File system |
 | `Module` | name, file, exports | AST parsing |
 | `Class` | name, file, line_start, line_end, docstring | AST parsing |
 | `Function` | name, file, line_start, line_end, signature, async, docstring | AST parsing |
@@ -74,14 +135,14 @@ A multi-layer knowledge graph that Claude can query to understand:
 | `Variable` | name, scope, type_hint, file, line | AST parsing |
 | `Import` | module, alias, file, line | AST parsing |
 | `Decorator` | name, arguments, file, line | AST parsing |
-| `Route` | method, path, handler, file, line | Framework-specific |
+| `ApiEndpoint` | method, path, handler, file, line | Framework detection |
 
 **R1.2: Edge Types**
 
 | Edge Type | From | To | Properties |
 |-----------|------|-----|------------|
 | `CONTAINS` | File/Class/Module | Function/Class/Method | - |
-| `CALLS` | Function | Function | line, async |
+| `CALLS` | Function | Function | line, async, cross_service |
 | `IMPORTS` | File | Module | alias |
 | `INHERITS` | Class | Class | - |
 | `IMPLEMENTS` | Class | Interface | - |
@@ -89,46 +150,46 @@ A multi-layer knowledge graph that Claude can query to understand:
 | `RETURNS` | Function | Type | - |
 | `ACCEPTS` | Function | Parameter | position, type |
 | `DECORATES` | Decorator | Function/Class | - |
-| `RAISES` | Function | Exception | - |
+| `EXPOSES` | File | ApiEndpoint | - |
+| `HANDLED_BY` | ApiEndpoint | Function | - |
 
-**R1.3: Source Location Tracking**
+**R1.3: Source Location (Required on All Code Nodes)**
 
-Every code node MUST include:
 ```python
 {
-    "file": "src/api/routes.py",      # Relative to repo root
-    "line_start": 45,                  # First line of definition
-    "line_end": 67,                    # Last line of definition
-    "column_start": 0,                 # For precise navigation
+    "file": "src/api/routes.py",
+    "line_start": 45,
+    "line_end": 67,
+    "column_start": 0,
     "column_end": 42,
-    "git_commit": "abc123",            # Version tracking
-    "last_modified": "2025-01-14T..."  # For incremental updates
+    "git_commit": "abc123",
+    "last_modified": "2026-01-15T...",
+    "project_id": "order-service"
 }
 ```
 
-### R2: Data Store Integration
+### R2: Data Store Nodes
 
-**R2.1: Database Schema Nodes**
+**R2.1: Database Schema**
 
 | Node Type | Properties |
 |-----------|------------|
 | `Database` | name, type (postgres/mysql/mongo), host, version |
 | `Schema` | name, database |
 | `Table` | name, schema, row_count_estimate |
-| `Column` | name, table, type, nullable, default, pii, phi, pci |
+| `Column` | name, table, type, nullable, default, pii, phi, pci, encrypted |
 | `Index` | name, table, columns, unique |
 | `ForeignKey` | from_column, to_column, on_delete |
-| `StoredProcedure` | name, schema, parameters |
 
 **R2.2: Other Data Stores**
 
-| Store Type | Nodes |
-|------------|-------|
+| Store Type | Node Types |
+|------------|------------|
 | Redis | `RedisKey` (pattern, ttl, type), `RedisStream` |
-| Kafka | `KafkaTopic`, `KafkaConsumerGroup`, `KafkaPartition` |
+| Kafka | `KafkaTopic`, `KafkaConsumerGroup` |
+| SQS | `Queue` (name, arn, fifo) |
+| RabbitMQ | `Queue`, `Exchange`, `Binding` |
 | S3/Blob | `Bucket`, `Prefix`, `ObjectPattern` |
-| Elasticsearch | `Index`, `Mapping`, `Field` |
-| Queue | `Queue`, `Exchange`, `Binding` (RabbitMQ) |
 
 **R2.3: Code-to-Data Edges**
 
@@ -138,399 +199,894 @@ Every code node MUST include:
 | `WRITES_TO` | Function writes to table/key |
 | `QUERIES` | Function queries specific columns |
 | `PUBLISHES_TO` | Function publishes to topic/queue |
-| `CONSUMES_FROM` | Function consumes from topic/queue |
+| `SUBSCRIBES_TO` | Function subscribes to topic/queue |
 
-**R2.4: Data Classification**
+**R2.4: Data Classification Tags**
 
-Columns/fields should be tagged:
 ```python
 {
     "pii": true,       # Personally Identifiable Information
     "phi": true,       # Protected Health Information
     "pci": false,      # Payment Card Industry data
-    "encrypted": true, # Is this column encrypted at rest?
-    "masked": false,   # Is this masked in logs/responses?
+    "encrypted": true, # Encrypted at rest
+    "masked": false,   # Masked in logs/responses
 }
 ```
 
-### R3: Library Ecosystem
-
-**R3.1: Pre-indexed Library Graphs**
-
-Maintain pre-built graphs for popular libraries:
-
-| Category | Libraries |
-|----------|-----------|
-| Python Web | FastAPI, Django, Flask, Starlette |
-| Python Data | Pandas, NumPy, SQLAlchemy, Pydantic |
-| JavaScript | React, Vue, Next.js, Express |
-| TypeScript | NestJS, TypeORM, Prisma |
-| Java | Spring Boot, Hibernate, Jackson |
-| Go | Gin, GORM, Chi |
-| Rust | Axum, Tokio, Serde |
-
-Each library graph includes:
-- Exported classes, functions, decorators
-- Common usage patterns
-- Type signatures
-- Semantic descriptions of purpose
-
-**R3.2: Version-Aware Graphs**
-
-```
-(:Function {name: "Query.get"})
-  -[:AVAILABLE_IN {versions: ["1.3", "1.4"]}]-> (:Library {name: "sqlalchemy"})
-  -[:DEPRECATED_IN {version: "2.0", replacement: "Session.get"}]-> ...
-
-(:Class {name: "BaseSettings"})
-  -[:MOVED_IN {version: "2.0", from: "pydantic", to: "pydantic_settings"}]-> ...
-```
-
-**R3.3: Closed Source API Schemas**
-
-For APIs without source code, index from OpenAPI/Swagger:
-- Stripe API
-- Twilio API
-- AWS SDK
-- Google Cloud
-- Azure
-
-### R4: Data Flow Analysis
-
-**R4.1: Request Traces**
-
-Track data flow through the system:
-```
-[HTTP POST /api/patients]
-  → routes.py:45 create_patient()
-    → services/patient.py:23 validate_patient(data)  # PHI in memory
-    → dal/patient.py:67 INSERT INTO patients         # PHI persisted
-    → services/audit.py:12 log_access()              # Audit created
-  ← routes.py:52 return PatientResponse              # PHI in response
-```
-
-**R4.2: Taint Analysis**
-
-Track sensitive data propagation:
-- Mark sources: user input, database reads, file reads
-- Mark sinks: responses, logs, external APIs
-- Trace paths between sources and sinks
-- Alert on unvalidated/unescaped paths
-
-**R4.3: Queue/Event Flows**
-
-```
-(:Function {name: "process_order"})
-  -[:PUBLISHES_TO]-> (:KafkaTopic {name: "orders.created"})
-
-(:Function {name: "send_confirmation"})
-  -[:CONSUMES_FROM]-> (:KafkaTopic {name: "orders.created"})
-```
-
-### R5: Language-Specific Extractors
-
-**R5.1: Extractor Interface**
-
-```python
-class CodeExtractor(Protocol):
-    """Extract code graph from source files."""
-
-    languages: list[str]  # ["python", "py"]
-
-    async def extract_file(
-        self,
-        path: Path,
-        content: str,
-    ) -> list[Node], list[Edge]
-
-    async def extract_framework_patterns(
-        self,
-        nodes: list[Node],
-    ) -> list[Node], list[Edge]  # Routes, DI, etc.
-```
-
-**R5.2: Framework Pattern Detection**
-
-| Framework | Patterns to Detect |
-|-----------|-------------------|
-| FastAPI | Routes (`@app.get`), Dependencies (`Depends`), Pydantic models |
-| Django | Views, Models, URL patterns, Middleware |
-| React | Components, Hooks, Props flow, Context |
-| Spring | Beans, `@Autowired`, `@Transactional`, JPA entities |
-| Express | Routes, Middleware chain |
-| NestJS | Controllers, Providers, Modules |
-
-**R5.3: Database Query Detection**
-
-Detect and parse:
-- SQLAlchemy queries → link to tables/columns
-- Raw SQL strings → parse and link
-- ORM operations → map to schema
-- Redis commands → link to key patterns
-
-### R6: Visualization
-
-**R6.1: 2D Graph View**
-
-Interactive graph visualization showing:
-- Nodes colored by type (function=blue, class=green, etc.)
-- Edge types with different line styles
-- Clustering by module/package
-- Search and filter capabilities
-
-**R6.2: 3D Layered View**
-
-Three-dimensional representation:
-```
-Z-axis (layers):
-  Layer 3: Semantic (beliefs, principles)
-  Layer 2: Code (functions, classes)
-  Layer 1: Infrastructure (data stores, APIs)
-
-Traces: Animated paths showing request/data flows
-Colors: Red=PHI, Yellow=PII, Green=public
-```
-
-**R6.3: Flow Visualization**
-
-Sequence diagram generation from traces:
-```
-User -> API: POST /patients
-API -> Service: create_patient()
-Service -> DAO: insert()
-DAO -> Database: INSERT
-Database -> DAO: result
-DAO -> Service: patient_id
-Service -> Audit: log_access()
-Service -> API: PatientResponse
-API -> User: 201 Created
-```
-
-### R7: Query Interface
-
-**R7.1: Natural Language Queries**
-
-Claude can ask questions like:
-- "What functions call UserService.authenticate()?"
-- "How does user input reach the database?"
-- "What code accesses PHI data?"
-- "Show me the data flow for order processing"
-- "What uses the deprecated API?"
-
-**R7.2: Graph Query Language**
-
-Support Cypher-like queries:
-```cypher
-// Find all paths from API routes to PHI columns
-MATCH path = (r:Route)-[:CALLS*1..5]->(f:Function)-[:QUERIES]->(c:Column {phi: true})
-RETURN path
-
-// Find deprecated API usage
-MATCH (f:Function)-[:USES]->(lib:LibraryFunction {deprecated: true})
-RETURN f.file, f.line_start, lib.name, lib.replacement
-```
-
-**R7.3: MCP Tool Integration**
-
-```python
-@mcp.tool
-async def query_code_graph(
-    query: str,  # Natural language or Cypher
-    query_type: str = "natural",  # "natural" | "cypher"
-) -> list[dict]:
-    """Query the code knowledge mesh."""
-    ...
-
-@mcp.tool
-async def trace_data_flow(
-    from_node: str,  # Function or route name
-    to_node: str,    # Table, column, or sink
-    data_type: str = None,  # "phi" | "pii" | "all"
-) -> list[dict]:
-    """Trace data flow between two points."""
-    ...
-
-@mcp.tool
-async def find_usages(
-    symbol: str,     # Function, class, or variable name
-    scope: str = "project",  # "file" | "project" | "ecosystem"
-) -> list[dict]:
-    """Find all usages of a symbol with file:line references."""
-    ...
-```
-
-### R8: Incremental Updates
-
-**R8.1: File Change Detection**
-
-On file save:
-1. Parse changed file with Tree-sitter
-2. Diff against existing graph nodes
-3. Update only changed nodes/edges
-4. Propagate changes to dependent nodes
-
-**R8.2: Git Integration**
-
-- Track git commit for each node version
-- Support querying graph at specific commits
-- Detect schema migrations in commits
-- Link code changes to schema changes
-
-### R9: Security Analysis
-
-**R9.1: Automated Checks**
-
-| Check | Description |
-|-------|-------------|
-| PHI Exposure | PHI data in API responses without audit |
-| SQL Injection | User input reaching raw SQL |
-| Auth Bypass | Routes reachable without auth middleware |
-| Sensitive Logging | PII/PHI in log statements |
-| Unencrypted Storage | Sensitive data to unencrypted columns |
-
-**R9.2: Compliance Reporting**
-
-Generate reports for:
-- HIPAA: PHI data flow audit
-- PCI-DSS: Cardholder data handling
-- GDPR: PII processing inventory
-- SOC2: Access control verification
-
-## Architecture
-
-### Component Overview
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Code Knowledge Mesh                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │   Parsers    │  │  Extractors  │  │   Graph Builder      │  │
-│  │              │  │              │  │                      │  │
-│  │ Tree-sitter  │→ │ Python/TS/   │→ │  Neo4j + Qdrant     │  │
-│  │ SQL Parser   │  │ Java/Go/etc  │  │  (structure+embed)   │  │
-│  │ Schema Dump  │  │              │  │                      │  │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
-│         ↑                                       ↓               │
-│  ┌──────────────┐                    ┌──────────────────────┐  │
-│  │ File Watcher │                    │   Query Engine       │  │
-│  │              │                    │                      │  │
-│  │ Incremental  │                    │  NL → Cypher         │  │
-│  │ Updates      │                    │  MCP Tools           │  │
-│  └──────────────┘                    └──────────────────────┘  │
-│                                                 ↓               │
-│  ┌──────────────┐                    ┌──────────────────────┐  │
-│  │ Library Hub  │                    │   Visualizer         │  │
-│  │              │                    │                      │  │
-│  │ Pre-indexed  │                    │  2D Graph / 3D Mesh  │  │
-│  │ OSS + APIs   │                    │  Flow Traces         │  │
-│  └──────────────┘                    └──────────────────────┘  │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Technology Stack
-
-| Component | Technology | Rationale |
-|-----------|------------|-----------|
-| AST Parsing | Tree-sitter | 40+ languages, incremental, fast |
-| Graph Storage | Neo4j | Cypher queries, ACID, enterprise |
-| Embeddings | Qdrant | Semantic search overlay |
-| Schema Extraction | SQLAlchemy inspect, pg_dump | Database introspection |
-| Library Index | Pre-built, versioned | Fast startup, consistent |
-
-## Success Metrics
-
-| Metric | Target |
-|--------|--------|
-| Query latency | < 100ms for common queries |
-| Index time | < 5 min for 100K LOC |
-| Incremental update | < 500ms per file |
-| Library coverage | Top 50 libraries indexed |
-| Accuracy | 95%+ for call graph edges |
-
-## Research References
-
-Based on state-of-the-art research (2024-2025):
-
-- **CodexGraph** (NAACL 2025) - LLM + code graph integration
-- **Joern** - Code Property Graphs (AST + CFG + PDG)
-- **Sourcegraph SCIP** - Cross-repo semantic indexing
-- **Microsoft GraphRAG** - Knowledge graph + RAG patterns
-- **Semgrep** - Taint analysis patterns
-
-## Phased Implementation
-
-### Phase 1: Core Graph (MVP)
-- Tree-sitter parsing for Python/TypeScript
-- Basic node types: File, Function, Class
-- Basic edges: CALLS, CONTAINS, IMPORTS
-- Neo4j storage
-- Simple MCP query tool
-
-### Phase 2: Data Stores
-- PostgreSQL schema extraction
-- Code-to-table linking
-- PHI/PII column tagging
-- Data flow edges
-
-### Phase 3: Library Ecosystem
-- Pre-index top 10 Python libraries
-- Version-aware edges
-- Framework pattern detection (FastAPI, Django)
-
-### Phase 4: Advanced Analysis
-- Taint analysis
-- Security checks
-- Compliance reporting
-- Flow visualization
-
-### Phase 5: Ecosystem
-- Cross-repo graphs
-- API schema indexing
-- 3D visualization
-- Full language coverage
-
-## Open Questions
-
-1. **Storage scale**: How to handle 1M+ node graphs efficiently?
-2. **Freshness**: How often to rebuild vs. incremental update?
-3. **Library hosting**: Self-hosted pre-indexed graphs or cloud service?
-4. **Privacy**: How to handle sensitive code in graph?
-5. **Multi-tenant**: Ecosystem graphs shared across users?
+### R3: Cross-Service Edges
+
+| Edge Type | From | To | Properties |
+|-----------|------|-----|------------|
+| `CALLS_SERVICE` | Function | ApiEndpoint (other service) | http_method, path |
+| `PRODUCES_TO` | Function | Queue/Topic | - |
+| `CONSUMES_FROM` | Function | Queue/Topic | - |
+| `SHARES_DATABASE` | Service | Database | access_type |
 
 ---
 
-## Appendix: Example Queries
+## Part 2: Agentic Extraction System
 
-### Find PHI Data Flows
-```cypher
-MATCH path = (route:Route)-[:CALLS*1..10]->(func:Function)-[:QUERIES]->(col:Column {phi: true})
-WHERE NOT exists((func)-[:CALLS]->(:Function {name: "audit_access"}))
-RETURN route.path, col.table + "." + col.name AS phi_column,
-       [n IN nodes(path) | n.file + ":" + n.line_start] AS trace
+### R4: Three-Tier Detection Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    THREE-TIER EXTRACTION PIPELINE                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │              TIER 1: SCHEMA-BASED EXTRACTION                          │  │
+│  │  Speed: <100ms/file | Cost: $0 | Coverage: ~80% of files             │  │
+│  │                                                                        │  │
+│  │  JSON schemas define patterns for known languages/frameworks.         │  │
+│  │  Pure regex + template substitution. No LLM calls.                    │  │
+│  │                                                                        │  │
+│  │  If confidence >= 0.8 → DONE                                          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                     │                                        │
+│                   confidence < 0.8  ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │              TIER 2: AI-ASSISTED ENHANCEMENT                          │  │
+│  │  Speed: 1-3s/file | Cost: ~$0.001/file | Coverage: ~15%              │  │
+│  │                                                                        │  │
+│  │  LLM receives schema hints + source, resolves:                        │  │
+│  │  • Ambiguous patterns ("is this producer or consumer?")               │  │
+│  │  • Environment variable resolution                                    │  │
+│  │  • Framework variant detection                                        │  │
+│  │  • Business context inference                                         │  │
+│  │                                                                        │  │
+│  │  Model: Haiku-class (fast, cheap)                                     │  │
+│  │  If confidence >= 0.7 → DONE                                          │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                     │                                        │
+│                   confidence < 0.7  ▼                                        │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │              TIER 3: AI-DISCOVERY + SELF-LEARNING                     │  │
+│  │  Speed: 5-10s/file | Cost: ~$0.01/file | Coverage: ~5%               │  │
+│  │                                                                        │  │
+│  │  LLM performs full analysis when no schema matches:                   │  │
+│  │  • Unknown framework detection                                        │  │
+│  │  • Custom pattern extraction                                          │  │
+│  │  • Complex metaprogramming analysis                                   │  │
+│  │                                                                        │  │
+│  │  Model: Sonnet-class (better reasoning)                               │  │
+│  │                                                                        │  │
+│  │  ┌─────────────────────────────────────────────────────────────────┐  │  │
+│  │  │  SELF-LEARNING: Successful extractions generate new schemas!   │  │  │
+│  │  │                                                                 │  │  │
+│  │  │  Discovery → Extract Patterns → Generate JSON Schema           │  │  │
+│  │  │                                      ↓                         │  │  │
+│  │  │                           Next time: Tier 1!                   │  │  │
+│  │  └─────────────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Find Deprecated API Usage
-```cypher
-MATCH (f:Function)-[:USES]->(dep:LibraryFunction)
-WHERE dep.deprecated_in <= "2.0"
-RETURN f.file, f.line_start, dep.name, dep.replacement
-ORDER BY f.file
+### R5: JSON Schema System
+
+**R5.1: Schema Directory Structure**
+
+```
+schemas/
+├── languages/
+│   ├── python.json           # def, class, async def, decorators
+│   ├── typescript.json       # function, class, interface, type
+│   ├── java.json             # class, interface, method, annotation
+│   └── ...
+│
+├── frameworks/
+│   ├── python/
+│   │   ├── fastapi.json      # @app.get, Depends(), Pydantic
+│   │   ├── django.json       # views, models, urlpatterns
+│   │   └── sqlalchemy.json   # Column, relationship
+│   ├── typescript/
+│   │   ├── nestjs.json       # @Controller, @Injectable
+│   │   ├── express.json      # router.get, app.use
+│   │   └── prisma.json       # model definitions
+│   └── java/
+│       └── spring.json       # @RestController, @Autowired
+│
+├── data-stores/
+│   ├── postgresql.json
+│   ├── mongodb.json
+│   └── redis.json
+│
+├── messaging/
+│   ├── sqs.json              # boto3 SQS patterns
+│   ├── kafka.json            # KafkaProducer/Consumer
+│   └── rabbitmq.json
+│
+├── infrastructure/
+│   ├── terraform.json        # AWS resource definitions
+│   ├── cloudformation.json
+│   └── kubernetes.json
+│
+└── custom/                   # Auto-generated from Tier 3
+    └── (learned schemas)
 ```
 
-### Trace Request Flow
-```cypher
-MATCH path = (r:Route {path: "/api/orders"})-[:CALLS*]->(sink)
-WHERE sink:Table OR sink:KafkaTopic OR sink:ExternalAPI
-RETURN path
+**R5.2: Schema Format**
+
+```json
+{
+  "$schema": "https://draagon-forge.dev/schema/extractor/v1.json",
+  "name": "fastapi",
+  "version": "1.0.0",
+  "language": "python",
+
+  "detection": {
+    "imports": ["fastapi", "from fastapi"],
+    "files": ["main.py", "app.py", "routers/*.py"],
+    "confidence_boost": 0.3
+  },
+
+  "extractors": {
+    "api_endpoints": {
+      "patterns": [
+        {
+          "regex": "@(?:app|router)\\.(get|post|put|delete|patch)\\([\"']([^\"']+)[\"']",
+          "captures": {
+            "method": { "group": 1, "transform": "uppercase" },
+            "path": { "group": 2 }
+          },
+          "node_template": {
+            "type": "ApiEndpoint",
+            "properties": {
+              "method": "${method}",
+              "path": "${path}"
+            }
+          }
+        }
+      ]
+    }
+  },
+
+  "ai_hints": {
+    "disambiguation": [
+      "app = FastAPI() is the main application instance",
+      "router = APIRouter() creates sub-routers"
+    ]
+  }
+}
 ```
 
-### Impact Analysis
+**R5.3: Schema Registry Interface**
+
+```typescript
+interface SchemaRegistry {
+  loadSchemas(schemaDir: string): Promise<void>;
+  findMatchingSchemas(file: SourceFile): Promise<Schema[]>;
+  getSchema(name: string): Schema | undefined;
+  addSchema(schema: Schema, persist: boolean): Promise<void>;
+  listSchemas(): SchemaInfo[];
+}
+```
+
+### R6: Self-Learning Pipeline
+
+When Tier 3 successfully extracts from an unknown framework:
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  AI Finds   │───►│  Extract    │───►│  Validate   │───►│  Persist    │
+│  New        │    │  Pattern    │    │  Against    │    │  to         │
+│  Framework  │    │  Regexes    │    │  Samples    │    │  custom/    │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+                                                               │
+                         ┌─────────────────────────────────────┘
+                         ▼
+              Future files → Tier 1 (fast, free)
+```
+
+**R6.1: Schema Generator Interface**
+
+```typescript
+interface SchemaGenerator {
+  generateSchema(
+    discovery: DiscoveryResult,
+    samples: SourceFile[]
+  ): Promise<GeneratedSchema>;
+
+  validateSchema(
+    schema: Schema,
+    samples: SourceFile[]
+  ): Promise<ValidationResult>;
+
+  persistSchema(
+    schema: Schema,
+    location: 'custom' | 'community'
+  ): Promise<void>;
+}
+```
+
+---
+
+## Part 3: Project Registry & Auto-Pull
+
+### R7: Multi-Project Management
+
+**R7.1: Project Registry**
+
+Track multiple git repositories for cross-codebase analysis:
+
+```typescript
+interface ProjectRegistry {
+  // Register a git repository
+  registerProject(config: ProjectConfig): Promise<Project>;
+
+  // List all registered projects
+  listProjects(): Promise<Project[]>;
+
+  // Get project by ID
+  getProject(projectId: string): Promise<Project | undefined>;
+
+  // Remove project from registry
+  removeProject(projectId: string): Promise<void>;
+
+  // Check for updates across all projects
+  checkForUpdates(): Promise<ProjectUpdate[]>;
+}
+
+interface ProjectConfig {
+  // Git repository URL (HTTPS or SSH)
+  gitUrl: string;
+
+  // Branch to track (default: main)
+  branch?: string;
+
+  // Local clone path (auto-generated if not provided)
+  localPath?: string;
+
+  // Human-readable name
+  name: string;
+
+  // Optional: specific paths to extract (default: entire repo)
+  includePaths?: string[];
+
+  // Optional: paths to exclude
+  excludePaths?: string[];
+
+  // Auto-pull settings
+  autoPull?: {
+    enabled: boolean;
+    // Poll interval in minutes (for repos without webhook support)
+    pollInterval?: number;
+    // Webhook secret (if using webhooks)
+    webhookSecret?: string;
+  };
+}
+
+interface Project {
+  id: string;
+  config: ProjectConfig;
+  status: 'active' | 'syncing' | 'error';
+  lastSync: Date | null;
+  lastCommit: string | null;
+  fileCount: number;
+  nodeCount: number;
+  errorMessage?: string;
+}
+```
+
+**R7.2: Auto-Pull Mechanisms**
+
+Two modes of operation:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         AUTO-PULL STRATEGIES                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  OPTION A: Webhook-Based (Preferred for GitHub/GitLab)                      │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                        │  │
+│  │   GitHub/GitLab ──webhook──► Draagon Forge API ──► Pull + Re-extract  │  │
+│  │                                                                        │  │
+│  │   Pros: Instant updates, no polling overhead                          │  │
+│  │   Cons: Requires webhook configuration, firewall access               │  │
+│  │                                                                        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  OPTION B: Polling-Based (For any git remote)                               │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                                                                        │  │
+│  │   Background Job ──(every N min)──► git fetch ──► Compare ──► Pull    │  │
+│  │                                                                        │  │
+│  │   Pros: Works with any git remote, no external config                 │  │
+│  │   Cons: Delayed updates, polling overhead                             │  │
+│  │                                                                        │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**R7.3: Sync Manager**
+
+```typescript
+interface SyncManager {
+  // Pull latest changes for a project
+  syncProject(projectId: string): Promise<SyncResult>;
+
+  // Pull all projects
+  syncAll(): Promise<SyncResult[]>;
+
+  // Get changes since last sync
+  getChangedFiles(projectId: string): Promise<ChangedFile[]>;
+
+  // Handle webhook payload
+  handleWebhook(
+    payload: WebhookPayload,
+    signature: string
+  ): Promise<SyncResult>;
+}
+
+interface SyncResult {
+  projectId: string;
+  success: boolean;
+  previousCommit: string;
+  newCommit: string;
+  changedFiles: ChangedFile[];
+  extractionTriggered: boolean;
+  error?: string;
+}
+
+interface ChangedFile {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
+  previousPath?: string;  // For renames
+}
+```
+
+**R7.4: Incremental Re-Extraction**
+
+When a project updates, only re-extract changed files:
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  git pull   │───►│  Diff       │───►│  Re-extract │───►│  Update     │
+│  detects    │    │  Changed    │    │  Only       │    │  Cross-     │
+│  new commit │    │  Files      │    │  Changed    │    │  Links      │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+                                            │
+                                            ▼
+                               Delete nodes for deleted files
+                               Update nodes for modified files
+                               Add nodes for new files
+                               Re-run cross-project linking
+```
+
+### R8: Cross-Codebase Linking
+
+**R8.1: Reference Collection**
+
+Scan all projects for external references:
+
+```typescript
+interface ReferenceCollector {
+  // Collect all queue references across projects
+  collectQueueReferences(): Promise<QueueReference[]>;
+
+  // Collect all API client calls
+  collectApiClientCalls(): Promise<ApiClientCall[]>;
+
+  // Collect all shared database references
+  collectDatabaseReferences(): Promise<DatabaseReference[]>;
+}
+
+interface QueueReference {
+  projectId: string;
+  file: string;
+  line: number;
+  direction: 'publish' | 'subscribe';
+  queueIdentifier: string;  // Could be literal, env var, or config ref
+  resolvedName?: string;    // After resolution
+  confidence: number;
+}
+```
+
+**R8.2: Reference Resolution**
+
+Resolve indirect references (env vars, config files, IaC):
+
+```typescript
+interface ReferenceResolver {
+  // Resolve queue name from env var or config
+  resolveQueueName(ref: QueueReference): Promise<string | null>;
+
+  // Parse terraform for resource definitions
+  parseTerraform(projectId: string): Promise<InfraResources>;
+
+  // Parse kubernetes manifests
+  parseKubernetes(projectId: string): Promise<InfraResources>;
+
+  // Parse docker-compose for service definitions
+  parseDockerCompose(projectId: string): Promise<ServiceDefinitions>;
+}
+```
+
+**R8.3: AI-Assisted Matching**
+
+When static resolution fails, use LLM reasoning:
+
+```xml
+<context>
+  <unresolved_references>
+    <queue project="order-service" env_var="SQS_ORDERS_QUEUE" direction="publish"/>
+    <queue project="fulfillment-service" literal="orders-created" direction="subscribe"/>
+    <terraform resource="aws_sqs_queue.orders" name="prod-orders-queue"/>
+  </unresolved_references>
+</context>
+
+<task>
+  Determine which queue references refer to the same logical queue.
+  Consider naming conventions, project relationships, and terraform resources.
+
+  Output confidence scores for each match.
+</task>
+```
+
+**R8.4: Cross-Project Link Types**
+
+| Link Type | Description | Detection Method |
+|-----------|-------------|------------------|
+| Queue Link | Producer → Queue → Consumer | Queue name matching |
+| API Link | Client → Server endpoint | URL/path matching |
+| Database Link | Multiple services → Same DB | Connection string matching |
+| Library Link | Shared library → Consumers | Import/dependency analysis |
+| Config Link | Shared config source | Environment variable tracing |
+
+---
+
+## Part 4: Query & Visualization
+
+### R9: Query Interface
+
+**R9.1: Natural Language Queries**
+
+```python
+@mcp.tool
+async def query_mesh(
+    query: str,
+    query_type: str = "natural",  # "natural" | "cypher"
+    scope: str = "all",           # "all" | project_id
+) -> list[dict]:
+    """Query the code knowledge mesh.
+
+    Examples:
+    - "What functions call UserService.authenticate()?"
+    - "How does user input reach the database?"
+    - "What code accesses PHI data?"
+    - "Show me the data flow for order processing"
+    - "What services publish to the orders queue?"
+    """
+```
+
+**R9.2: Graph Query Examples**
+
 ```cypher
+// Find all paths from API routes to PHI columns
+MATCH path = (r:ApiEndpoint)-[:HANDLED_BY]->(:Function)-[:CALLS*1..5]->
+             (f:Function)-[:QUERIES]->(c:Column {phi: true})
+RETURN r.path, c.table + "." + c.name AS phi_column, path
+
+// Find queue producer/consumer pairs across services
+MATCH (producer:Function)-[:PUBLISHES_TO]->(q:Queue)<-[:SUBSCRIBES_TO]-(consumer:Function)
+WHERE producer.project_id <> consumer.project_id
+RETURN producer.project_id, producer.name, q.name, consumer.project_id, consumer.name
+
+// Find orphaned queue publishers (no consumer)
+MATCH (f:Function)-[:PUBLISHES_TO]->(q:Queue)
+WHERE NOT EXISTS { (q)<-[:SUBSCRIBES_TO]-(:Function) }
+RETURN f.project_id, f.file, f.name, q.name AS orphaned_queue
+
+// Impact analysis: what's affected if this function changes?
 MATCH (changed:Function {name: "calculate_tax"})
 MATCH (caller)-[:CALLS*1..5]->(changed)
-RETURN DISTINCT caller.file, caller.name, caller.line_start
-ORDER BY caller.file
+RETURN DISTINCT caller.project_id, caller.file, caller.name
 ```
+
+**R9.3: MCP Tools**
+
+```python
+@mcp.tool
+async def build_mesh(
+    project_path: str | None = None,  # None = all registered projects
+    incremental: bool = True,
+    enable_ai: bool = True,
+) -> dict:
+    """Build or update the code knowledge mesh."""
+
+@mcp.tool
+async def register_project(
+    git_url: str,
+    name: str,
+    branch: str = "main",
+    auto_pull: bool = True,
+) -> dict:
+    """Register a git repository for mesh extraction."""
+
+@mcp.tool
+async def query_mesh(
+    query: str,
+    query_type: str = "natural",
+) -> list[dict]:
+    """Query the code knowledge mesh."""
+
+@mcp.tool
+async def trace_data_flow(
+    from_point: str,  # Function, route, or service name
+    to_point: str,    # Table, queue, or external API
+    include_cross_service: bool = True,
+) -> list[dict]:
+    """Trace data flow between two points in the mesh."""
+
+@mcp.tool
+async def find_cross_service_links(
+    project_id: str | None = None,
+) -> list[dict]:
+    """Find all cross-service relationships (queues, APIs, shared DBs)."""
+```
+
+### R10: Visualization
+
+**R10.1: 2D Graph View**
+
+- Nodes colored by type (function=blue, class=green, etc.)
+- Edge types with different line styles
+- Clustering by project/module
+- Cross-service edges highlighted
+
+**R10.2: Service Topology View**
+
+```
+┌─────────────┐      orders-queue      ┌─────────────┐
+│   Order     │─────────────────────►  │ Fulfillment │
+│   Service   │                        │   Service   │
+│   (Python)  │                        │    (TS)     │
+└─────────────┘                        └─────────────┘
+       │                                      │
+       │ WRITES_TO                           │ READS_FROM
+       ▼                                      ▼
+┌─────────────┐                        ┌─────────────┐
+│  PostgreSQL │                        │   MongoDB   │
+│   orders    │                        │   events    │
+└─────────────┘                        └─────────────┘
+```
+
+**R10.3: Flow Visualization**
+
+Sequence diagrams generated from mesh:
+
+```
+User -> OrderService: POST /orders
+OrderService -> PostgreSQL: INSERT order
+OrderService -> SQS: publish(orders-queue)
+SQS -> FulfillmentService: consume
+FulfillmentService -> MongoDB: INSERT event
+FulfillmentService -> User: email confirmation
+```
+
+---
+
+## Part 5: Documentation Generation
+
+### R11: Documentation as Graph Queries
+
+**The Key Insight:** Documentation is a **view** of the mesh, not a separate artifact.
+
+```python
+@mcp.tool
+async def generate_docs(
+    project_id: str | None = None,  # None = all projects
+    doc_type: str = "api",          # "api" | "architecture" | "data-flow" | "dependencies"
+    format: str = "markdown",       # "markdown" | "html" | "openapi"
+) -> str:
+    """Generate documentation from the code knowledge mesh.
+
+    Because the mesh is always current, docs are always current.
+    """
+```
+
+**R11.1: Documentation Types**
+
+| Doc Type | Graph Query | Output Format |
+|----------|-------------|---------------|
+| API Documentation | All ApiEndpoint nodes + handlers | OpenAPI spec, Markdown |
+| Architecture Overview | Service nodes + cross-service edges | Mermaid diagrams |
+| Data Flow | Paths from routes → data stores | Sequence diagrams |
+| Dependencies | Import graph, library usage | Dependency tree |
+| Queue Topology | All PUBLISHES_TO / SUBSCRIBES_TO | Message flow diagram |
+| Database Schema | Table/Column nodes | ERD diagrams |
+| Cross-Service Contracts | API + Queue links across projects | Contract documentation |
+
+**R11.2: Example - API Documentation Query**
+
+```cypher
+MATCH (file:File)-[:CONTAINS]->(endpoint:ApiEndpoint)
+MATCH (endpoint)-[:HANDLED_BY]->(handler:Function)
+OPTIONAL MATCH (handler)-[:ACCEPTS]->(param:Parameter)
+OPTIONAL MATCH (handler)-[:RETURNS]->(response:Type)
+RETURN endpoint.method, endpoint.path,
+       handler.name, handler.docstring,
+       collect(param) as params, response
+ORDER BY endpoint.path
+```
+
+→ Transforms to OpenAPI spec or Markdown.
+
+**R11.3: Always-Current Guarantee**
+
+```
+Traditional Docs:          Mesh-Based Docs:
+┌─────────────┐           ┌─────────────┐
+│ Write docs  │           │ Query mesh  │
+│    ↓        │           │    ↓        │
+│ Code changes│           │ Code changes│
+│    ↓        │           │    ↓        │
+│ Docs stale! │           │ Mesh updates│
+│    ↓        │           │    ↓        │
+│ Update docs │           │ Query mesh  │◄── Same query,
+│  (manual)   │           │             │    new results!
+└─────────────┘           └─────────────┘
+```
+
+---
+
+## Part 6: Implementation Architecture
+
+### R12: TypeScript/Python Split
+
+**TypeScript (mesh-builder/):**
+- Schema registry and loading
+- Pattern matching
+- Language/framework detection
+- Tier 1 extraction
+- Tier 2/3 AI client calls
+- Cross-project linking logic
+- CLI interface
+- JSON output
+
+**Python (draagon_forge/):**
+- Neo4j graph storage
+- MCP tool exposure
+- Integration with draagon-ai
+- Webhook handlers
+- Code review integration
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         IMPLEMENTATION SPLIT                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  TYPESCRIPT (src/mesh-builder/)                                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  schemas/          → JSON pattern definitions                         │  │
+│  │  core/             → SchemaRegistry, PatternMatcher, TierRouter       │  │
+│  │  extractors/       → File, Function, API, Queue extractors            │  │
+│  │  ai/               → LLM client, Tier2/3 handlers, SchemaGenerator    │  │
+│  │  cross-project/    → MultiProjectCoordinator, ReferenceResolver       │  │
+│  │  output/           → MeshExporter (JSON)                              │  │
+│  │  cli/              → mesh-builder extract, link, schema commands      │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                     │                                        │
+│                                     ▼  mesh.json                             │
+│                                                                              │
+│  PYTHON (src/draagon_forge/)                                                │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  mesh/             → MeshImporter, MeshDiffer, GraphQueries           │  │
+│  │  projects/         → ProjectRegistry, SyncManager, WebhookHandler     │  │
+│  │  mcp/tools/mesh.py → build_mesh, query_mesh, register_project, etc.   │  │
+│  │  docs/             → DocGenerator (queries mesh for docs)             │  │
+│  │  agents/code_review/ → MeshAwareReviewer                              │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### R13: File Structure
+
+```
+draagon-forge/
+├── src/
+│   ├── mesh-builder/           # TypeScript
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   ├── schemas/
+│   │   │   ├── languages/
+│   │   │   ├── frameworks/
+│   │   │   ├── data-stores/
+│   │   │   ├── messaging/
+│   │   │   ├── infrastructure/
+│   │   │   └── custom/
+│   │   ├── core/
+│   │   ├── extractors/
+│   │   ├── ai/
+│   │   ├── cross-project/
+│   │   ├── output/
+│   │   └── cli/
+│   │
+│   └── draagon_forge/          # Python
+│       ├── mesh/
+│       │   ├── __init__.py
+│       │   ├── importer.py
+│       │   ├── differ.py
+│       │   └── queries.py
+│       ├── projects/
+│       │   ├── __init__.py
+│       │   ├── registry.py
+│       │   ├── sync.py
+│       │   └── webhook.py
+│       ├── docs/
+│       │   ├── __init__.py
+│       │   └── generator.py
+│       └── mcp/tools/
+│           └── mesh.py
+```
+
+---
+
+## Success Metrics
+
+| Metric | Target | Rationale |
+|--------|--------|-----------|
+| Tier 1 coverage | >80% of files | Most files use fast schema path |
+| Tier 2 escalation | <15% of files | AI-assisted only for ambiguous |
+| Tier 3 discovery | <5% of files | Full AI only for unknown |
+| Cross-service link accuracy | >85% | Queue/API links correct |
+| Schema generation success | >70% | Generated schemas work |
+| Full extraction (10K files) | <2 minutes | Fast enough for CI |
+| Incremental update | <10 seconds | Fast enough for save-time |
+| Documentation accuracy | >90% | Generated docs match reality |
+| Query latency | <100ms | Interactive experience |
+| Auto-sync latency | <30 seconds | Near real-time updates |
+
+---
+
+## Cost Analysis
+
+| Tier | % of Files | Tokens/File | Total (10K files) | Cost |
+|------|------------|-------------|-------------------|------|
+| Tier 1 | 80% | 0 | 0 | $0.00 |
+| Tier 2 | 15% | 500 | 750K | ~$0.15 |
+| Tier 3 | 5% | 2000 | 1M | ~$0.30 |
+| **Total** | 100% | - | 1.75M | **~$0.45** |
+
+- Full scan of 10,000 file codebase: **~$0.45**
+- Incremental update (10 files): **~$0.005**
+
+---
+
+## Implementation Phases
+
+### Phase 1: Core Infrastructure (2 weeks)
+- TypeScript mesh-builder skeleton
+- Schema registry with JSON loading
+- Pattern matcher
+- Basic extractors (File, Function, Class)
+- JSON output format
+
+### Phase 2: Framework Schemas (1 week)
+- Python: FastAPI, Django, SQLAlchemy
+- TypeScript: NestJS, Express, Prisma
+- Initial data store schemas
+
+### Phase 3: AI Tiers (2 weeks)
+- LLM client (Groq)
+- Tier 2 enhancement
+- Tier 3 discovery
+- Schema generator
+
+### Phase 4: Project Registry (1 week)
+- Project registration
+- Git clone/pull
+- Polling-based sync
+- Webhook support
+
+### Phase 5: Cross-Project Linking (2 weeks)
+- Reference collection
+- Config resolution (env, terraform, k8s)
+- AI-assisted matching
+- Cross-service edges
+
+### Phase 6: Python Integration (1 week)
+- Neo4j importer
+- MCP tools
+- Code review integration
+
+### Phase 7: Documentation (1 week)
+- Graph queries for doc types
+- OpenAPI, Markdown, Mermaid output
+- generate_docs tool
+
+**Total: ~10 weeks**
+
+---
+
+## Open Questions
+
+1. **Schema sharing**: Share generated schemas across users/orgs? Privacy?
+2. **Large codebases**: Partitioning strategy for 100K+ file repos?
+3. **Webhook security**: How to validate webhook payloads from various sources?
+4. **Caching**: How long to cache AI results? Invalidation?
+5. **Multi-tenant**: Ecosystem graphs shared or isolated?
+
+---
+
+## Appendix: Example Workflows
+
+### Workflow 1: Initial Setup
+
+```bash
+# Register projects
+mesh register https://github.com/myorg/order-service --name "Order Service"
+mesh register https://github.com/myorg/fulfillment-service --name "Fulfillment"
+mesh register https://github.com/myorg/infrastructure --name "Infrastructure"
+
+# Build initial mesh
+mesh build --all
+
+# View cross-service links
+mesh query "What services consume from order queues?"
+```
+
+### Workflow 2: Code Review with Mesh
+
+```python
+# In code review agent
+diff = get_staged_changes()
+
+# Build incremental mesh for changed files
+await build_mesh(incremental=True)
+
+# Check for structural violations
+violations = await query_mesh("""
+  Find any broken cross-service links after these changes:
+  - Queues with no consumers
+  - API calls to non-existent endpoints
+  - Database writes without corresponding reads
+""")
+
+# Include in review
+if violations:
+    review.add_issue("Structural violations detected", violations)
+```
+
+### Workflow 3: Generate Documentation
+
+```bash
+# Generate API docs for all services
+mesh docs --type api --format openapi > api-spec.yaml
+
+# Generate architecture diagram
+mesh docs --type architecture --format mermaid > architecture.md
+
+# Generate data flow for specific route
+mesh trace "/api/orders" "orders table" --format sequence > order-flow.md
+```
+
+---
+
+**Document Status:** Draft
+**Created:** 2025-01-14
+**Revised:** 2026-01-15
+**Last Updated:** 2026-01-15

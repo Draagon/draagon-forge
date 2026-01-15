@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "base-typescript",
+  "version": "1.0.0",
+  "language": "typescript",
+  "description": "Base TypeScript/JavaScript extraction patterns",
+  "detection": {
+    "imports": [],
+    "files": ["*.ts", "*.tsx", "*.js", "*.jsx"],
+    "patterns": [
+      "^import\\s+",
+      "^export\\s+(class|interface|type|function|const)",
+      "^interface\\s+",
+      "^type\\s+"
+    ],
+    "confidence_boost": 0.2
+  },
+  "extractors": {
+    "imports": {
+      "description": "ES module import statements",
+      "patterns": [
+        {
+          "name": "named_import",
+          "regex": "^import\\s+\\{([^}]+)\\}\\s+from\\s+['\"]([^'\"]+)['\"];?$",
+          "flags": "gm",
+          "captures": {
+            "names": { "group": 1, "transform": "trim" },
+            "module": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "module",
+            "properties": {
+              "names": "names",
+              "module": "module",
+              "style": "named"
+            }
+          }
+        },
+        {
+          "name": "default_import",
+          "regex": "^import\\s+(\\w+)\\s+from\\s+['\"]([^'\"]+)['\"];?$",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "module": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "module",
+            "properties": {
+              "default_name": "name",
+              "module": "module",
+              "style": "default"
+            }
+          }
+        },
+        {
+          "name": "namespace_import",
+          "regex": "^import\\s+\\*\\s+as\\s+(\\w+)\\s+from\\s+['\"]([^'\"]+)['\"];?$",
+          "flags": "gm",
+          "captures": {
+            "alias": { "group": 1 },
+            "module": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "module",
+            "properties": {
+              "alias": "alias",
+              "module": "module",
+              "style": "namespace"
+            }
+          }
+        }
+      ]
+    },
+    "exports": {
+      "description": "ES module export statements",
+      "patterns": [
+        {
+          "name": "named_export",
+          "regex": "^export\\s+\\{([^}]+)\\}(?:\\s+from\\s+['\"]([^'\"]+)['\"])?;?$",
+          "flags": "gm",
+          "captures": {
+            "names": { "group": 1, "transform": "trim" },
+            "from_module": { "group": 2, "default": "" }
+          }
+        },
+        {
+          "name": "default_export",
+          "regex": "^export\\s+default\\s+(\\w+)",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          }
+        }
+      ]
+    },
+    "interfaces": {
+      "description": "TypeScript interface definitions",
+      "patterns": [
+        {
+          "name": "interface_def",
+          "regex": "^(?:export\\s+)?interface\\s+(\\w+)(?:<[^>]+>)?(?:\\s+extends\\s+([^{]+))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "extends": { "group": 2, "default": "", "transform": "trim" }
+          },
+          "context_lines": 5,
+          "node_template": {
+            "type": "Interface",
+            "name_from": "name",
+            "properties": {
+              "extends": "extends"
+            }
+          }
+        }
+      ]
+    },
+    "types": {
+      "description": "TypeScript type aliases",
+      "patterns": [
+        {
+          "name": "type_alias",
+          "regex": "^(?:export\\s+)?type\\s+(\\w+)(?:<[^>]+>)?\\s*=\\s*([^;]+);?$",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "definition": { "group": 2, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Interface",
+            "name_from": "name",
+            "properties": {
+              "type_alias": "true",
+              "definition": "definition"
+            }
+          }
+        }
+      ]
+    },
+    "classes": {
+      "description": "Class definitions",
+      "patterns": [
+        {
+          "name": "class_def",
+          "regex": "^(?:export\\s+)?(?:abstract\\s+)?class\\s+(\\w+)(?:<[^>]+>)?(?:\\s+extends\\s+(\\w+))?(?:\\s+implements\\s+([^{]+))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "extends": { "group": 2, "default": "" },
+            "implements": { "group": 3, "default": "", "transform": "trim" }
+          },
+          "context_lines": 3,
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "extends": "extends",
+              "implements": "implements"
+            }
+          }
+        }
+      ]
+    },
+    "functions": {
+      "description": "Function declarations",
+      "patterns": [
+        {
+          "name": "function_declaration",
+          "regex": "^(?:export\\s+)?(?:async\\s+)?function\\s+(\\w+)(?:<[^>]+>)?\\s*\\(([^)]*)\\)(?:\\s*:\\s*([^{]+))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "params": { "group": 2 },
+            "return_type": { "group": 3, "default": "", "transform": "trim" }
+          },
+          "context_lines": 2,
+          "node_template": {
+            "type": "Function",
+            "name_from": "name",
+            "properties": {
+              "parameters": "params",
+              "return_type": "return_type"
+            }
+          }
+        },
+        {
+          "name": "arrow_function_const",
+          "regex": "^(?:export\\s+)?const\\s+(\\w+)(?:\\s*:\\s*[^=]+)?\\s*=\\s*(?:async\\s+)?\\(([^)]*)\\)(?:\\s*:\\s*([^=]+))?\\s*=>",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "params": { "group": 2, "default": "" },
+            "return_type": { "group": 3, "default": "", "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Function",
+            "name_from": "name",
+            "properties": {
+              "parameters": "params",
+              "return_type": "return_type",
+              "style": "arrow"
+            }
+          }
+        }
+      ]
+    },
+    "methods": {
+      "description": "Class methods",
+      "patterns": [
+        {
+          "name": "method",
+          "regex": "^\\s+(?:public\\s+|private\\s+|protected\\s+)?(?:static\\s+)?(?:async\\s+)?(\\w+)\\s*\\(([^)]*)\\)(?:\\s*:\\s*([^{]+))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "params": { "group": 2 },
+            "return_type": { "group": 3, "default": "", "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Method",
+            "name_from": "name",
+            "properties": {
+              "parameters": "params",
+              "return_type": "return_type"
+            }
+          }
+        }
+      ]
+    },
+    "decorators": {
+      "description": "TypeScript decorators",
+      "patterns": [
+        {
+          "name": "decorator",
+          "regex": "^\\s*@(\\w+)(?:\\(([^)]*)\\))?",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "args": { "group": 2, "default": "" }
+          },
+          "node_template": {
+            "type": "Decorator",
+            "name_from": "name",
+            "properties": {
+              "arguments": "args"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "ai_hints": {
+    "common_patterns": [
+      "TypeScript uses explicit type annotations with colons",
+      "Interfaces define object shapes without implementation",
+      "Type aliases create named types using 'type' keyword",
+      "Decorators (experimental) use @ symbol before classes/methods"
+    ],
+    "framework_context": "Base TypeScript without any specific framework"
+  }
+}

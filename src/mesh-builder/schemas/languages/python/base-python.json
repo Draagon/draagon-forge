@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "base-python",
+  "version": "1.0.0",
+  "language": "python",
+  "description": "Base Python language extraction patterns",
+  "detection": {
+    "imports": [],
+    "files": ["*.py"],
+    "patterns": ["^import\\s+", "^from\\s+.*\\s+import", "^def\\s+", "^class\\s+"],
+    "confidence_boost": 0.2
+  },
+  "extractors": {
+    "imports": {
+      "description": "Python import statements",
+      "patterns": [
+        {
+          "name": "from_import",
+          "regex": "^from\\s+([\\w.]+)\\s+import\\s+(.+)$",
+          "flags": "gm",
+          "captures": {
+            "module": { "group": 1 },
+            "names": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "module",
+            "properties": {
+              "module": "module",
+              "names": "names",
+              "style": "from"
+            }
+          }
+        },
+        {
+          "name": "simple_import",
+          "regex": "^import\\s+([\\w.]+)(?:\\s+as\\s+(\\w+))?$",
+          "flags": "gm",
+          "captures": {
+            "module": { "group": 1 },
+            "alias": { "group": 2, "default": "" }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "module",
+            "properties": {
+              "module": "module",
+              "alias": "alias",
+              "style": "import"
+            }
+          }
+        }
+      ]
+    },
+    "classes": {
+      "description": "Python class definitions",
+      "patterns": [
+        {
+          "name": "class_def",
+          "regex": "^class\\s+(\\w+)(?:\\(([^)]+)\\))?\\s*:",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "bases": { "group": 2, "default": "" }
+          },
+          "context_lines": 1,
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "bases": "bases"
+            }
+          }
+        }
+      ]
+    },
+    "functions": {
+      "description": "Python function and method definitions",
+      "patterns": [
+        {
+          "name": "function_def",
+          "regex": "^(\\s*)def\\s+(\\w+)\\s*\\(([^)]*)\\)(?:\\s*->\\s*([^:]+))?\\s*:",
+          "flags": "gm",
+          "captures": {
+            "indent": { "group": 1 },
+            "name": { "group": 2 },
+            "params": { "group": 3, "default": "" },
+            "return_type": { "group": 4, "default": "" }
+          },
+          "context_lines": 2,
+          "node_template": {
+            "type": "Function",
+            "name_from": "name",
+            "properties": {
+              "parameters": "params",
+              "return_type": "return_type"
+            }
+          }
+        },
+        {
+          "name": "async_function_def",
+          "regex": "^(\\s*)async\\s+def\\s+(\\w+)\\s*\\(([^)]*)\\)(?:\\s*->\\s*([^:]+))?\\s*:",
+          "flags": "gm",
+          "captures": {
+            "indent": { "group": 1 },
+            "name": { "group": 2 },
+            "params": { "group": 3, "default": "" },
+            "return_type": { "group": 4, "default": "" }
+          },
+          "context_lines": 2,
+          "node_template": {
+            "type": "Function",
+            "name_from": "name",
+            "properties": {
+              "parameters": "params",
+              "return_type": "return_type",
+              "async": "true"
+            }
+          }
+        }
+      ]
+    },
+    "decorators": {
+      "description": "Python decorators",
+      "patterns": [
+        {
+          "name": "decorator",
+          "regex": "^\\s*@([\\w.]+)(?:\\(([^)]*)\\))?",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "args": { "group": 2, "default": "" }
+          },
+          "node_template": {
+            "type": "Decorator",
+            "name_from": "name",
+            "properties": {
+              "arguments": "args"
+            }
+          }
+        }
+      ]
+    },
+    "variables": {
+      "description": "Module-level variables and constants",
+      "patterns": [
+        {
+          "name": "typed_assignment",
+          "regex": "^([A-Z_][A-Z0-9_]*)\\s*:\\s*([^=]+)\\s*=\\s*(.+)$",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "type": { "group": 2, "transform": "trim" },
+            "value": { "group": 3, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Variable",
+            "name_from": "name",
+            "properties": {
+              "type_hint": "type",
+              "is_constant": "true"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "ai_hints": {
+    "common_patterns": [
+      "Python uses indentation for scope",
+      "Methods with 'self' first parameter are instance methods",
+      "Methods with 'cls' first parameter are class methods",
+      "Double underscore methods are dunder/magic methods"
+    ],
+    "framework_context": "Base Python without any specific framework"
+  }
+}

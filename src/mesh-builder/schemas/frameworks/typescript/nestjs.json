@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "nestjs",
+  "version": "1.0.0",
+  "language": "typescript",
+  "description": "NestJS framework extraction patterns",
+  "detection": {
+    "imports": [
+      "from '@nestjs/common'",
+      "from '@nestjs/core'",
+      "from '@nestjs/microservices'",
+      "from '@nestjs/typeorm'",
+      "from '@nestjs/swagger'"
+    ],
+    "files": [
+      "*.controller.ts",
+      "*.service.ts",
+      "*.module.ts",
+      "*.guard.ts",
+      "*.pipe.ts",
+      "*.interceptor.ts",
+      "*.dto.ts",
+      "*.entity.ts"
+    ],
+    "patterns": [
+      "@Controller\\(",
+      "@Injectable\\(",
+      "@Module\\(",
+      "@Get\\(|@Post\\(|@Put\\(|@Delete\\(|@Patch\\("
+    ],
+    "confidence_boost": 0.4
+  },
+  "extractors": {
+    "controllers": {
+      "description": "NestJS controller classes",
+      "patterns": [
+        {
+          "name": "controller_class",
+          "regex": "@Controller\\s*\\(['\"]?([^)'\"]*)['\"]?\\)\\s*(?:@[^\\n]+\\n)*\\s*(?:export\\s+)?class\\s+(\\w+)",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1, "default": "/" },
+            "name": { "group": 2 }
+          },
+          "context_lines": 2,
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "base_path": "path",
+              "type": "controller",
+              "framework": "nestjs"
+            }
+          }
+        }
+      ]
+    },
+    "routes": {
+      "description": "NestJS route decorators",
+      "patterns": [
+        {
+          "name": "http_route",
+          "regex": "@(Get|Post|Put|Delete|Patch|Options|Head|All)\\s*\\(['\"]?([^)'\"]*)['\"]?\\)",
+          "flags": "gm",
+          "captures": {
+            "method": { "group": 1, "transform": "uppercase" },
+            "path": { "group": 2, "default": "/" }
+          },
+          "context_lines": 3,
+          "node_template": {
+            "type": "ApiEndpoint",
+            "name_from": "path",
+            "properties": {
+              "method": "method",
+              "path": "path",
+              "framework": "nestjs"
+            }
+          }
+        },
+        {
+          "name": "route_handler",
+          "regex": "@(?:Get|Post|Put|Delete|Patch)\\s*\\([^)]*\\)\\s*(?:@[^\\n]+\\n)*\\s*(?:async\\s+)?(\\w+)\\s*\\(([^)]*)\\)(?:\\s*:\\s*([^{]+))?",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "params": { "group": 2 },
+            "return_type": { "group": 3, "default": "", "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Method",
+            "name_from": "name",
+            "properties": {
+              "parameters": "params",
+              "return_type": "return_type",
+              "is_route_handler": "true"
+            }
+          },
+          "edge_template": {
+            "type": "HANDLED_BY",
+            "from": "current_class",
+            "to": "current_node"
+          }
+        }
+      ]
+    },
+    "services": {
+      "description": "NestJS injectable services",
+      "patterns": [
+        {
+          "name": "injectable_service",
+          "regex": "@Injectable\\s*\\(([^)]*)\\)\\s*(?:export\\s+)?class\\s+(\\w+)",
+          "flags": "gm",
+          "captures": {
+            "options": { "group": 1, "default": "" },
+            "name": { "group": 2 }
+          },
+          "context_lines": 2,
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "type": "service",
+              "injectable": "true",
+              "framework": "nestjs"
+            }
+          }
+        }
+      ]
+    },
+    "modules": {
+      "description": "NestJS module definitions",
+      "patterns": [
+        {
+          "name": "module_class",
+          "regex": "@Module\\s*\\(\\{([^}]+)\\}\\)\\s*(?:export\\s+)?class\\s+(\\w+)",
+          "flags": "gms",
+          "captures": {
+            "config": { "group": 1 },
+            "name": { "group": 2 }
+          },
+          "context_lines": 10,
+          "node_template": {
+            "type": "Module",
+            "name_from": "name",
+            "properties": {
+              "type": "module",
+              "framework": "nestjs"
+            }
+          }
+        },
+        {
+          "name": "module_controllers",
+          "regex": "controllers\\s*:\\s*\\[([^\\]]+)\\]",
+          "flags": "gm",
+          "captures": {
+            "controllers": { "group": 1, "transform": "trim" }
+          }
+        },
+        {
+          "name": "module_providers",
+          "regex": "providers\\s*:\\s*\\[([^\\]]+)\\]",
+          "flags": "gm",
+          "captures": {
+            "providers": { "group": 1, "transform": "trim" }
+          }
+        },
+        {
+          "name": "module_imports",
+          "regex": "imports\\s*:\\s*\\[([^\\]]+)\\]",
+          "flags": "gm",
+          "captures": {
+            "imports": { "group": 1, "transform": "trim" }
+          }
+        },
+        {
+          "name": "module_exports",
+          "regex": "exports\\s*:\\s*\\[([^\\]]+)\\]",
+          "flags": "gm",
+          "captures": {
+            "exports": { "group": 1, "transform": "trim" }
+          }
+        }
+      ]
+    },
+    "guards": {
+      "description": "NestJS guards",
+      "patterns": [
+        {
+          "name": "use_guards",
+          "regex": "@UseGuards\\s*\\(([^)]+)\\)",
+          "flags": "gm",
+          "captures": {
+            "guards": { "group": 1 }
+          }
+        },
+        {
+          "name": "guard_class",
+          "regex": "@Injectable\\s*\\(\\)\\s*(?:export\\s+)?class\\s+(\\w+Guard)\\s+implements\\s+CanActivate",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "type": "guard",
+              "framework": "nestjs"
+            }
+          }
+        }
+      ]
+    },
+    "pipes": {
+      "description": "NestJS validation pipes",
+      "patterns": [
+        {
+          "name": "use_pipes",
+          "regex": "@UsePipes\\s*\\(([^)]+)\\)",
+          "flags": "gm",
+          "captures": {
+            "pipes": { "group": 1 }
+          }
+        },
+        {
+          "name": "pipe_class",
+          "regex": "@Injectable\\s*\\(\\)\\s*(?:export\\s+)?class\\s+(\\w+Pipe)\\s+implements\\s+PipeTransform",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "type": "pipe",
+              "framework": "nestjs"
+            }
+          }
+        }
+      ]
+    },
+    "dtos": {
+      "description": "Data Transfer Objects with class-validator",
+      "patterns": [
+        {
+          "name": "dto_class",
+          "regex": "(?:export\\s+)?class\\s+(\\w+Dto)\\s*(?:extends\\s+(\\w+))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "extends": { "group": 2, "default": "" }
+          },
+          "context_lines": 10,
+          "node_template": {
+            "type": "Model",
+            "name_from": "name",
+            "properties": {
+              "type": "dto",
+              "extends": "extends",
+              "framework": "nestjs"
+            }
+          }
+        },
+        {
+          "name": "dto_property",
+          "regex": "@(IsString|IsNumber|IsBoolean|IsEmail|IsOptional|IsNotEmpty|IsArray|ValidateNested|Type)\\s*\\([^)]*\\)\\s*\\n\\s*(\\w+)(?:\\?)?\\s*:\\s*([^;\\n]+)",
+          "flags": "gm",
+          "captures": {
+            "validator": { "group": 1 },
+            "name": { "group": 2 },
+            "type": { "group": 3, "transform": "trim" }
+          }
+        }
+      ]
+    },
+    "dependency_injection": {
+      "description": "Constructor dependency injection",
+      "patterns": [
+        {
+          "name": "constructor_injection",
+          "regex": "constructor\\s*\\(([^)]+)\\)",
+          "flags": "gm",
+          "captures": {
+            "params": { "group": 1 }
+          }
+        },
+        {
+          "name": "inject_decorator",
+          "regex": "@Inject\\s*\\(['\"]?([^)'\"]+)['\"]?\\)\\s*(private|public|readonly)?\\s*(\\w+)",
+          "flags": "gm",
+          "captures": {
+            "token": { "group": 1 },
+            "modifier": { "group": 2, "default": "" },
+            "name": { "group": 3 }
+          },
+          "edge_template": {
+            "type": "USES",
+            "from": "current_class",
+            "to": "token"
+          }
+        }
+      ]
+    },
+    "swagger": {
+      "description": "OpenAPI/Swagger decorators",
+      "patterns": [
+        {
+          "name": "api_tags",
+          "regex": "@ApiTags\\s*\\(['\"]([^'\"]+)['\"]\\)",
+          "flags": "gm",
+          "captures": {
+            "tag": { "group": 1 }
+          }
+        },
+        {
+          "name": "api_operation",
+          "regex": "@ApiOperation\\s*\\(\\{[^}]*summary\\s*:\\s*['\"]([^'\"]+)['\"]",
+          "flags": "gm",
+          "captures": {
+            "summary": { "group": 1 }
+          }
+        },
+        {
+          "name": "api_response",
+          "regex": "@ApiResponse\\s*\\(\\{[^}]*status\\s*:\\s*(\\d+)",
+          "flags": "gm",
+          "captures": {
+            "status": { "group": 1 }
+          }
+        }
+      ]
+    }
+  },
+  "ai_hints": {
+    "disambiguation": [
+      "Is this a guard for authentication or authorization?",
+      "Should this service be scoped to request or singleton?",
+      "Is this DTO for request validation or response shaping?"
+    ],
+    "common_patterns": [
+      "NestJS uses decorators extensively for metadata",
+      "@Controller defines route prefix, @Get/@Post etc define endpoints",
+      "@Injectable marks classes for dependency injection",
+      "@Module organizes the application into cohesive blocks",
+      "Constructor injection is the primary DI pattern"
+    ],
+    "framework_context": "NestJS is an Angular-inspired Node.js framework using decorators and dependency injection"
+  }
+}

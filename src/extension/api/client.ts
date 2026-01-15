@@ -40,6 +40,66 @@ interface SearchResult {
 }
 
 /**
+ * Issue from code review
+ */
+export interface ReviewIssue {
+    file_path: string;
+    line?: number;
+    message: string;
+    severity: 'blocking' | 'warning' | 'suggestion';
+    suggestion?: string;
+}
+
+/**
+ * Principle violation detected during review
+ */
+export interface PrincipleViolation {
+    principle: string;
+    conviction: number;
+    issue: ReviewIssue;
+}
+
+/**
+ * Full code review result
+ */
+export interface CodeReviewResult {
+    mode: string;
+    overall_assessment: 'approve' | 'request_changes' | 'needs_discussion';
+    summary: string;
+    blocking_issues: ReviewIssue[];
+    warnings: ReviewIssue[];
+    suggestions: ReviewIssue[];
+    principle_violations: PrincipleViolation[];
+    new_patterns_detected: string[];
+    files_reviewed: number;
+    files_skipped: number;
+    total_lines_changed: number;
+    review_duration_ms: number;
+    tokens_used: number;
+    estimated_cost_cents: number;
+}
+
+/**
+ * Quick summary of changes without full review
+ */
+export interface ReviewSummary {
+    mode_detected: string;
+    files_changed: number;
+    total_additions: number;
+    total_deletions: number;
+    critical_files: number;
+    important_files: number;
+    minor_files: number;
+    noise_files: number;
+    file_list: Array<{
+        path: string;
+        lines_added: number;
+        lines_deleted: number;
+        classification: string;
+    }>;
+}
+
+/**
  * Graph node for visualization
  */
 export interface GraphNode {
@@ -322,6 +382,50 @@ export class ForgeAPIClient implements vscode.Disposable {
 
         const query = params.toString();
         return this.fetch(`/beliefs/all${query ? `?${query}` : ''}`);
+    }
+
+    // =========================================================================
+    // Code Review API
+    // =========================================================================
+
+    /**
+     * Review code changes using the Code Review Agent.
+     */
+    async reviewCodeChanges(options?: {
+        mode?: 'auto' | 'staged' | 'unstaged' | 'branch';
+        baseBranch?: string;
+        maxFiles?: number;
+        includeSuggestions?: boolean;
+        repoPath?: string;
+    }): Promise<CodeReviewResult> {
+        const params = new URLSearchParams();
+        if (options?.mode) params.set('mode', options.mode);
+        if (options?.baseBranch) params.set('base_branch', options.baseBranch);
+        if (options?.maxFiles !== undefined) params.set('max_files', String(options.maxFiles));
+        if (options?.includeSuggestions !== undefined) params.set('include_suggestions', String(options.includeSuggestions));
+        if (options?.repoPath) params.set('repo_path', options.repoPath);
+
+        const query = params.toString();
+        return this.fetch<CodeReviewResult>(`/review${query ? `?${query}` : ''}`, {
+            method: 'POST',
+        });
+    }
+
+    /**
+     * Get a quick summary of changes without full review.
+     */
+    async getReviewSummary(options?: {
+        mode?: 'auto' | 'staged' | 'unstaged' | 'branch';
+        baseBranch?: string;
+        repoPath?: string;
+    }): Promise<ReviewSummary> {
+        const params = new URLSearchParams();
+        if (options?.mode) params.set('mode', options.mode);
+        if (options?.baseBranch) params.set('base_branch', options.baseBranch);
+        if (options?.repoPath) params.set('repo_path', options.repoPath);
+
+        const query = params.toString();
+        return this.fetch<ReviewSummary>(`/review/summary${query ? `?${query}` : ''}`);
     }
 
     /**

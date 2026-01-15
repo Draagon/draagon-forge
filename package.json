@@ -131,6 +131,24 @@
                 "title": "Draagon Forge: Refresh Account",
                 "category": "Draagon Forge",
                 "icon": "$(refresh)"
+            },
+            {
+                "command": "draagon-forge.reviewChanges",
+                "title": "Draagon Forge: Review Code Changes",
+                "category": "Draagon Forge",
+                "icon": "$(checklist)"
+            },
+            {
+                "command": "draagon-forge.reviewStagedChanges",
+                "title": "Draagon Forge: Review Staged Changes",
+                "category": "Draagon Forge",
+                "icon": "$(git-commit)"
+            },
+            {
+                "command": "draagon-forge.reviewBranchChanges",
+                "title": "Draagon Forge: Review Branch Changes",
+                "category": "Draagon Forge",
+                "icon": "$(git-branch)"
             }
         ],
         "viewsContainers": {
@@ -227,6 +245,11 @@
                 "command": "draagon-forge.openBeliefGraph",
                 "key": "ctrl+shift+g",
                 "mac": "cmd+shift+g"
+            },
+            {
+                "command": "draagon-forge.reviewChanges",
+                "key": "ctrl+shift+r",
+                "mac": "cmd+shift+r"
             }
         ],
         "configuration": {

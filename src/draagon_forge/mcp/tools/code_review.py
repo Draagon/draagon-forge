@@ -8,11 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from draagon_forge.agents.code_review import (
-    CodeReviewAgent,
     ReviewMode,
     ReviewResult,
+    create_code_review_agent,
 )
-from draagon_forge.mcp.memory import get_memory
 from draagon_forge.mcp.server import mcp
 
 
@@ -31,7 +30,7 @@ async def review_code_changes(
     This tool performs a multi-tiered code review:
     1. **Triage**: Classifies files by priority (critical, important, minor, noise)
     2. **Focused Review**: Per-file analysis with project principles
-    3. **Synthesis**: Cross-file pattern detection
+    3. **Synthesis**: Cross-file pattern detection (identifies cross-module issues)
 
     Modes:
     - `staged`: Review only staged changes (`git diff --cached`)
@@ -54,6 +53,8 @@ async def review_code_changes(
         - blocking_issues: Must fix before merge
         - warnings: Should fix, but not blocking
         - suggestions: Nice to have improvements
+        - principle_violations: Project principles that were violated
+        - new_patterns_detected: Potential new patterns to learn
         - files_reviewed: Number of files analyzed
         - files_skipped: Number of files skipped (noise, over limit)
         - tokens_used: Total tokens consumed
@@ -77,16 +78,11 @@ async def review_code_changes(
     }
     review_mode = mode_map.get(mode.lower(), ReviewMode.AUTO)
 
-    # Get memory backend for principles
-    memory = get_memory()
-
-    # Create agent
-    agent = CodeReviewAgent(
+    # Create fully-wired agent using factory (includes LLM + memory)
+    agent = await create_code_review_agent(
         repo_path=Path(repo_path) if repo_path else None,
         max_files=max_files,
         parallel_reviews=parallel_reviews,
-        memory_backend=memory,
-        # LLM provider will be None - agent handles gracefully
     )
 
     # Run review

@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "fastapi",
+  "version": "1.0.0",
+  "language": "python",
+  "description": "FastAPI framework extraction patterns",
+  "detection": {
+    "imports": [
+      "from fastapi import",
+      "import fastapi",
+      "from fastapi.routing import",
+      "from fastapi.responses import"
+    ],
+    "files": ["main.py", "app.py", "**/routers/*.py", "**/routes/*.py", "**/api/*.py"],
+    "patterns": [
+      "@app\\.(get|post|put|patch|delete|options|head)",
+      "@router\\.(get|post|put|patch|delete)"
+    ],
+    "confidence_boost": 0.4
+  },
+  "extractors": {
+    "routes": {
+      "description": "FastAPI route decorators and handlers",
+      "patterns": [
+        {
+          "name": "route_decorator",
+          "regex": "@(app|router)\\.(get|post|put|patch|delete|options|head)\\s*\\([\"']([^\"']+)[\"'](?:,\\s*([^)]+))?\\)",
+          "flags": "gm",
+          "captures": {
+            "router_name": { "group": 1 },
+            "method": { "group": 2, "transform": "uppercase" },
+            "path": { "group": 3 },
+            "options": { "group": 4, "default": "" }
+          },
+          "context_lines": 3,
+          "node_template": {
+            "type": "ApiEndpoint",
+            "name_from": "path",
+            "properties": {
+              "method": "method",
+              "path": "path",
+              "framework": "fastapi",
+              "router": "router_name"
+            }
+          }
+        },
+        {
+          "name": "route_handler",
+          "regex": "@(?:app|router)\\.(?:get|post|put|patch|delete|options|head)\\s*\\([^)]+\\)\\s*\\n(?:@[^\\n]+\\n)*\\s*async\\s+def\\s+(\\w+)\\s*\\(([^)]*)\\)",
+          "flags": "gm",
+          "captures": {
+            "handler_name": { "group": 1 },
+            "params": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Function",
+            "name_from": "handler_name",
+            "properties": {
+              "parameters": "params",
+              "is_route_handler": "true"
+            }
+          },
+          "edge_template": {
+            "type": "HANDLED_BY",
+            "from": "current_file",
+            "to": "current_node"
+          }
+        }
+      ]
+    },
+    "dependencies": {
+      "description": "FastAPI dependency injection",
+      "patterns": [
+        {
+          "name": "depends_param",
+          "regex": "(\\w+)\\s*:\\s*\\w+\\s*=\\s*Depends\\s*\\(\\s*([\\w.]+)\\s*\\)",
+          "flags": "gm",
+          "captures": {
+            "param_name": { "group": 1 },
+            "dependency": { "group": 2 }
+          },
+          "edge_template": {
+            "type": "USES",
+            "from": "current_function",
+            "to": "dependency"
+          }
+        }
+      ]
+    },
+    "routers": {
+      "description": "APIRouter instances",
+      "patterns": [
+        {
+          "name": "router_instance",
+          "regex": "(\\w+)\\s*=\\s*APIRouter\\s*\\((?:[^)]*prefix\\s*=\\s*[\"']([^\"']+)[\"'])?",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "prefix": { "group": 2, "default": "" }
+          },
+          "node_template": {
+            "type": "Module",
+            "name_from": "name",
+            "properties": {
+              "type": "router",
+              "prefix": "prefix",
+              "framework": "fastapi"
+            }
+          }
+        },
+        {
+          "name": "include_router",
+          "regex": "app\\.include_router\\s*\\(\\s*(\\w+)(?:,\\s*prefix\\s*=\\s*[\"']([^\"']+)[\"'])?",
+          "flags": "gm",
+          "captures": {
+            "router_name": { "group": 1 },
+            "prefix": { "group": 2, "default": "" }
+          },
+          "edge_template": {
+            "type": "CONTAINS",
+            "from": "current_file",
+            "to": "router_name"
+          }
+        }
+      ]
+    },
+    "pydantic_models": {
+      "description": "Pydantic model definitions (request/response schemas)",
+      "patterns": [
+        {
+          "name": "pydantic_model",
+          "regex": "class\\s+(\\w+)\\s*\\(\\s*(BaseModel|BaseSettings|[\\w.]*Schema)\\s*\\)\\s*:",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "base": { "group": 2 }
+          },
+          "context_lines": 10,
+          "node_template": {
+            "type": "Model",
+            "name_from": "name",
+            "properties": {
+              "base_class": "base",
+              "framework": "pydantic"
+            }
+          }
+        },
+        {
+          "name": "model_field",
+          "regex": "^\\s{4}(\\w+)\\s*:\\s*([^=\\n]+)(?:\\s*=\\s*(.+))?$",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "type": { "group": 2, "transform": "trim" },
+            "default": { "group": 3, "default": "" }
+          },
+          "node_template": {
+            "type": "Variable",
+            "name_from": "name",
+            "properties": {
+              "type_hint": "type",
+              "default_value": "default",
+              "is_field": "true"
+            }
+          }
+        }
+      ]
+    },
+    "responses": {
+      "description": "Response model specifications",
+      "patterns": [
+        {
+          "name": "response_model",
+          "regex": "response_model\\s*=\\s*([\\w\\[\\],\\s]+)",
+          "flags": "gm",
+          "captures": {
+            "model": { "group": 1, "transform": "trim" }
+          }
+        },
+        {
+          "name": "status_code",
+          "regex": "status_code\\s*=\\s*(\\d+|status\\.\\w+)",
+          "flags": "gm",
+          "captures": {
+            "code": { "group": 1 }
+          }
+        }
+      ]
+    },
+    "middleware": {
+      "description": "FastAPI middleware",
+      "patterns": [
+        {
+          "name": "add_middleware",
+          "regex": "app\\.add_middleware\\s*\\(\\s*(\\w+)",
+          "flags": "gm",
+          "captures": {
+            "middleware_class": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Function",
+            "name_from": "middleware_class",
+            "properties": {
+              "type": "middleware"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "ai_hints": {
+    "disambiguation": [
+      "Is this a request model or response model?",
+      "Is this an internal endpoint or public API?",
+      "Does this dependency inject a database session?"
+    ],
+    "common_patterns": [
+      "FastAPI routes are decorated with @app.get/post/etc or @router.get/post/etc",
+      "Depends() is used for dependency injection",
+      "Pydantic BaseModel subclasses define request/response schemas",
+      "APIRouter allows organizing routes into modules"
+    ],
+    "framework_context": "FastAPI is a modern Python web framework using Pydantic for data validation and automatic OpenAPI generation"
+  }
+}

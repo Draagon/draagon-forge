@@ -4,7 +4,7 @@ Code Review Agent Module
 Scalable code review with tiered processing to handle large diffs efficiently.
 """
 
-from .agent import CodeReviewAgent
+from .agent import CodeReviewAgent, create_code_review_agent
 from .models import (
     ReviewResult,
     ReviewIssue,
@@ -19,6 +19,7 @@ from .chunker import DiffChunker
 
 __all__ = [
     "CodeReviewAgent",
+    "create_code_review_agent",
     "ReviewResult",
     "ReviewIssue",
     "IssueSeverity",

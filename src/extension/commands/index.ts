@@ -390,5 +390,295 @@ export function registerCommands(
                 vscode.window.showInformationMessage('Account info refreshed');
             }
         }),
+
+        // =================================================================
+        // Code Review Commands
+        // =================================================================
+
+        // Review changes (auto-detect mode)
+        vscode.commands.registerCommand('draagon-forge.reviewChanges', async () => {
+            const mode = await vscode.window.showQuickPick(
+                [
+                    { label: 'Auto-detect', value: 'auto' as const, description: 'Detect most relevant mode' },
+                    { label: 'Staged changes', value: 'staged' as const, description: 'Review git diff --cached' },
+                    { label: 'Unstaged changes', value: 'unstaged' as const, description: 'Review working directory changes' },
+                    { label: 'Branch vs main', value: 'branch' as const, description: 'Review all changes since main' },
+                ],
+                { placeHolder: 'What changes do you want to review?' }
+            );
+
+            if (!mode) return;
+
+            await runCodeReview(apiClient, mode.value);
+        }),
+
+        // Review staged changes directly
+        vscode.commands.registerCommand('draagon-forge.reviewStagedChanges', async () => {
+            await runCodeReview(apiClient, 'staged');
+        }),
+
+        // Review branch changes directly
+        vscode.commands.registerCommand('draagon-forge.reviewBranchChanges', async () => {
+            const baseBranch = await vscode.window.showInputBox({
+                prompt: 'Base branch to compare against',
+                value: 'main',
+                placeHolder: 'main',
+            });
+
+            if (!baseBranch) return;
+
+            await runCodeReview(apiClient, 'branch', baseBranch);
+        }),
     ];
+}
+
+/**
+ * Run a code review and display results.
+ */
+async function runCodeReview(
+    apiClient: ForgeAPIClient,
+    mode: 'auto' | 'staged' | 'unstaged' | 'branch',
+    baseBranch?: string
+): Promise<void> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        vscode.window.showWarningMessage('No workspace folder open');
+        return;
+    }
+
+    const repoPath = workspaceFolders[0].uri.fsPath;
+
+    // Show progress
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Reviewing code changes...',
+            cancellable: false,
+        },
+        async (progress) => {
+            try {
+                // First get a quick summary
+                progress.report({ message: 'Analyzing changes...' });
+                const summary = await apiClient.getReviewSummary({
+                    mode,
+                    baseBranch,
+                    repoPath,
+                });
+
+                if (summary.files_changed === 0) {
+                    vscode.window.showInformationMessage('No changes to review');
+                    return;
+                }
+
+                progress.report({
+                    message: `Reviewing ${summary.files_changed} files (${summary.critical_files} critical)...`,
+                });
+
+                // Run full review
+                const result = await apiClient.reviewCodeChanges({
+                    mode,
+                    baseBranch,
+                    repoPath,
+                    includeSuggestions: true,
+                });
+
+                // Show results
+                showReviewResults(result);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                vscode.window.showErrorMessage(`Code review failed: ${message}`);
+            }
+        }
+    );
+}
+
+/**
+ * Display code review results in a webview panel.
+ */
+function showReviewResults(result: import('../api/client').CodeReviewResult): void {
+    const panel = vscode.window.createWebviewPanel(
+        'codeReviewResults',
+        `Code Review: ${result.overall_assessment}`,
+        vscode.ViewColumn.Beside,
+        { enableScripts: true }
+    );
+
+    const assessmentIcon = result.overall_assessment === 'approve'
+        ? '✅'
+        : result.overall_assessment === 'request_changes'
+            ? '❌'
+            : '⚠️';
+
+    const assessmentClass = result.overall_assessment === 'approve'
+        ? 'approve'
+        : result.overall_assessment === 'request_changes'
+            ? 'reject'
+            : 'discuss';
+
+    const issuesList = (issues: import('../api/client').ReviewIssue[], severityClass: string) =>
+        issues.length === 0
+            ? '<p class="empty">None</p>'
+            : issues.map(issue => `
+                <div class="issue ${severityClass}">
+                    <div class="issue-header">
+                        <span class="file">${issue.file_path}${issue.line ? `:${issue.line}` : ''}</span>
+                    </div>
+                    <div class="message">${issue.message}</div>
+                    ${issue.suggestion ? `<div class="suggestion">💡 ${issue.suggestion}</div>` : ''}
+                </div>
+            `).join('');
+
+    const violationsList = result.principle_violations.length === 0
+        ? '<p class="empty">None</p>'
+        : result.principle_violations.map(v => `
+            <div class="violation">
+                <div class="principle">"${v.principle}" (${(v.conviction * 100).toFixed(0)}% conviction)</div>
+                <div class="issue">
+                    <span class="file">${v.issue.file_path}${v.issue.line ? `:${v.issue.line}` : ''}</span>
+                    <span class="message">${v.issue.message}</span>
+                </div>
+            </div>
+        `).join('');
+
+    panel.webview.html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body {
+                    padding: 20px;
+                    font-family: var(--vscode-font-family);
+                    color: var(--vscode-foreground);
+                    background: var(--vscode-editor-background);
+                }
+                .header {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 20px;
+                }
+                .assessment {
+                    font-size: 24px;
+                    font-weight: bold;
+                }
+                .assessment.approve { color: #4caf50; }
+                .assessment.reject { color: #f44336; }
+                .assessment.discuss { color: #ff9800; }
+                .summary {
+                    background: var(--vscode-textBlockQuote-background);
+                    padding: 15px;
+                    border-radius: 4px;
+                    margin-bottom: 20px;
+                }
+                .stats {
+                    display: flex;
+                    gap: 20px;
+                    flex-wrap: wrap;
+                    margin-bottom: 20px;
+                    font-size: 13px;
+                    color: var(--vscode-descriptionForeground);
+                }
+                .stat { display: flex; gap: 5px; }
+                .section { margin-bottom: 25px; }
+                .section h2 {
+                    font-size: 14px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    margin-bottom: 10px;
+                    color: var(--vscode-descriptionForeground);
+                }
+                .issue {
+                    padding: 10px;
+                    margin-bottom: 8px;
+                    border-radius: 4px;
+                    background: var(--vscode-inputValidation-infoBackground);
+                }
+                .issue.blocking { border-left: 3px solid #f44336; }
+                .issue.warning { border-left: 3px solid #ff9800; }
+                .issue.suggestion { border-left: 3px solid #2196f3; }
+                .issue-header { margin-bottom: 5px; }
+                .file {
+                    font-family: monospace;
+                    font-size: 12px;
+                    color: var(--vscode-textLink-foreground);
+                }
+                .message { margin-bottom: 5px; }
+                .suggestion {
+                    font-size: 13px;
+                    color: var(--vscode-descriptionForeground);
+                    margin-top: 5px;
+                }
+                .violation {
+                    padding: 10px;
+                    margin-bottom: 8px;
+                    border-radius: 4px;
+                    background: var(--vscode-inputValidation-warningBackground);
+                    border-left: 3px solid #ff9800;
+                }
+                .principle {
+                    font-style: italic;
+                    margin-bottom: 5px;
+                }
+                .empty {
+                    color: var(--vscode-descriptionForeground);
+                    font-style: italic;
+                }
+                .count {
+                    background: var(--vscode-badge-background);
+                    color: var(--vscode-badge-foreground);
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    font-size: 11px;
+                    margin-left: 5px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <span style="font-size: 32px">${assessmentIcon}</span>
+                <span class="assessment ${assessmentClass}">${result.overall_assessment.replace('_', ' ').toUpperCase()}</span>
+            </div>
+
+            <div class="summary">${result.summary}</div>
+
+            <div class="stats">
+                <div class="stat"><strong>Mode:</strong> ${result.mode}</div>
+                <div class="stat"><strong>Files reviewed:</strong> ${result.files_reviewed}</div>
+                <div class="stat"><strong>Files skipped:</strong> ${result.files_skipped}</div>
+                <div class="stat"><strong>Lines changed:</strong> ${result.total_lines_changed}</div>
+                <div class="stat"><strong>Duration:</strong> ${(result.review_duration_ms / 1000).toFixed(1)}s</div>
+                <div class="stat"><strong>Est. cost:</strong> $${(result.estimated_cost_cents / 100).toFixed(3)}</div>
+            </div>
+
+            <div class="section">
+                <h2>Blocking Issues <span class="count">${result.blocking_issues.length}</span></h2>
+                ${issuesList(result.blocking_issues, 'blocking')}
+            </div>
+
+            <div class="section">
+                <h2>Warnings <span class="count">${result.warnings.length}</span></h2>
+                ${issuesList(result.warnings, 'warning')}
+            </div>
+
+            <div class="section">
+                <h2>Suggestions <span class="count">${result.suggestions.length}</span></h2>
+                ${issuesList(result.suggestions, 'suggestion')}
+            </div>
+
+            <div class="section">
+                <h2>Principle Violations <span class="count">${result.principle_violations.length}</span></h2>
+                ${violationsList}
+            </div>
+
+            ${result.new_patterns_detected.length > 0 ? `
+                <div class="section">
+                    <h2>New Patterns Detected <span class="count">${result.new_patterns_detected.length}</span></h2>
+                    <ul>
+                        ${result.new_patterns_detected.map(p => `<li>${p}</li>`).join('')}
+                    </ul>
+                </div>
+            ` : ''}
+        </body>
+        </html>
+    `;
 }
