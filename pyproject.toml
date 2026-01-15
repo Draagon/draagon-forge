@@ -109,3 +109,8 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: Integration tests that require external resources (git repos, etc.)",
+    "e2e: End-to-end tests that exercise the full pipeline",
+    "slow: Tests that take longer than 5 seconds to run",
+]

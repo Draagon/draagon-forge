@@ -287,3 +287,130 @@ The tiered approach caps costs by reviewing only the most important files.
 3. **Zero false positives on formatting-only changes**
 4. **Catches 80%+ of principle violations** detected by human reviewers
 5. **Learns from feedback** - flagged issues that get dismissed reduce future false positives
+
+---
+
+## Test Plan
+
+### Test Strategy Overview
+
+| Level | Scope | Dependencies | Run Time |
+|-------|-------|--------------|----------|
+| **Unit** | Individual components in isolation | None (fixtures) | Fast (<1s each) |
+| **Integration** | Component interactions with real git | Temp git repos | Medium (~2s each) |
+| **E2E** | Full pipeline from MCP tool to result | Git repos + mocks | Slow (~5s each) |
+
+### Unit Tests (`test_*.py` - no markers)
+
+#### GitDiffParser Tests (`test_git_diff.py`)
+| Test Case | What it Validates |
+|-----------|-------------------|
+| `test_parse_simple_diff` | Single file diff parsing |
+| `test_parse_multi_file_diff` | Multiple files in one diff |
+| `test_parse_renamed_file` | File rename detection |
+| `test_parse_deleted_file` | Deleted file handling |
+| `test_parse_binary_file` | Binary file detection |
+| `test_parse_empty_diff` | Empty diff returns empty list |
+| `test_hunk_header_context_preserved` | Function context in headers |
+| `test_total_lines_changed_property` | Line counting accuracy |
+| `test_staged_mode_command` | Correct git command for staged |
+| `test_branch_mode_command` | Correct git command for branch comparison |
+
+#### FileClassifier Tests (`test_file_classifier.py`)
+| Test Case | What it Validates |
+|-----------|-------------------|
+| `test_security_paths_are_critical` | auth/, crypto/, security/ → critical |
+| `test_config_files_are_critical` | .env, config.py → critical |
+| `test_noise_files_are_skipped` | *.lock, dist/ → noise |
+| `test_binary_files_are_noise` | Binary files skipped |
+| `test_api_paths_are_important` | api/, routes/ → important |
+| `test_large_changes_are_important` | >100 lines → important |
+| `test_test_files_are_minor` | tests/ → minor |
+| `test_doc_files_are_minor` | *.md → minor |
+| `test_prioritize_respects_max_files` | Limit enforced |
+| `test_prioritize_critical_always_included` | Critical files never skipped |
+| `test_is_formatting_only` | Whitespace-only detection |
+
+#### DiffChunker Tests (`test_chunker.py`)
+| Test Case | What it Validates |
+|-----------|-------------------|
+| `test_estimate_tokens_*` | Token estimation accuracy |
+| `test_needs_chunking` | Threshold detection |
+| `test_small_diff_single_chunk` | No unnecessary chunking |
+| `test_large_diff_multiple_chunks` | Chunking at token limit |
+| `test_chunks_preserve_all_hunks` | No data loss |
+| `test_python_function_boundary` | Semantic boundary detection |
+| `test_detect_language_by_extension` | Language detection |
+
+### Integration Tests (`@pytest.mark.integration`)
+
+| Test Case | What it Validates |
+|-----------|-------------------|
+| `test_detect_mode_with_staged_changes` | Auto-detect finds staged |
+| `test_detect_mode_with_unstaged_changes` | Auto-detect finds unstaged |
+| `test_detect_mode_no_changes` | Auto-detect falls back to branch |
+| `test_get_file_list_staged` | Correct files returned |
+| `test_get_diff_returns_parseable_output` | Real git → parseable output |
+| `test_review_staged_changes` | Full agent with staged changes |
+| `test_review_respects_max_files` | File limit enforced |
+| `test_review_critical_files_always_included` | .env included in review |
+| `test_review_blocking_issue_returns_request_changes` | Correct assessment |
+| `test_loads_principles_from_memory` | Memory integration works |
+| `test_parallel_reviews_complete` | All files reviewed in parallel |
+
+### End-to-End Tests (`@pytest.mark.e2e`)
+
+| Test Case | What it Validates |
+|-----------|-------------------|
+| `test_full_pipeline_staged_changes` | Complete staged review |
+| `test_full_pipeline_with_critical_files` | Priority filtering |
+| `test_full_pipeline_branch_comparison` | Branch mode works |
+| `test_full_pipeline_result_format` | API-ready output |
+| `test_review_code_changes_tool` | MCP tool invocation |
+| `test_get_review_summary_tool` | Summary tool works |
+| `test_200_file_changes` | Scale handling (200 files) |
+| `test_large_file_chunking` | Chunking for large files |
+| `test_handles_llm_failure_gracefully` | Error recovery |
+| `test_handles_invalid_git_repo` | Non-git directory handling |
+
+### Running Tests
+
+```bash
+# All tests
+pytest tests/agents/code_review/
+
+# Unit tests only (fast)
+pytest tests/agents/code_review/ -m "not integration and not e2e"
+
+# Integration tests
+pytest tests/agents/code_review/ -m integration
+
+# E2E tests
+pytest tests/agents/code_review/ -m e2e
+
+# With coverage
+pytest tests/agents/code_review/ --cov=draagon_forge.agents.code_review --cov-report=html
+```
+
+### Test Fixtures
+
+| Fixture | Scope | Purpose |
+|---------|-------|---------|
+| `temp_git_repo` | function | Minimal git repo for basic tests |
+| `realistic_repo` | function | Full project structure for E2E |
+| `mock_llm` | function | Generic warning response |
+| `mock_llm_blocking_issue` | function | Security issue response |
+| `mock_llm_no_issues` | function | Clean code response |
+| `mock_llm_contextual` | function | Context-aware responses |
+| `mock_memory` | function | Principles and watch rules |
+
+### Coverage Targets
+
+| Component | Target |
+|-----------|--------|
+| `git_diff.py` | >90% |
+| `file_classifier.py` | >95% |
+| `chunker.py` | >90% |
+| `agent.py` | >85% |
+| `models.py` | >95% |
+| **Overall** | **>90%** |
