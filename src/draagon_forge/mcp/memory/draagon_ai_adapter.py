@@ -34,6 +34,8 @@ class DraagonAIAdapter:
         self.provider = provider
         self.config = config
         self.review_items: dict[str, ReviewItem] = {}  # Local storage for review queue
+        # ID mapping: forge_id -> memory_id (Qdrant uses UUIDs, we use forge IDs)
+        self._id_map: dict[str, str] = {}
 
     async def search(
         self,
@@ -105,7 +107,7 @@ class DraagonAIAdapter:
             belief: Belief to store
 
         Returns:
-            Memory ID
+            Memory ID (the forge_id, not the Qdrant UUID)
         """
         from draagon_ai.memory.base import MemoryType, MemoryScope
 
@@ -124,33 +126,136 @@ class DraagonAIAdapter:
                 **belief.metadata,
             },
         )
-        return memory.id
+        # Store the mapping: forge_id -> qdrant_uuid
+        self._id_map[belief.id] = memory.id
+        logger.debug("Stored belief ID mapping", forge_id=belief.id, memory_id=memory.id)
+        return belief.id  # Return forge_id for consistency
 
     async def get_belief(self, belief_id: str) -> Belief | None:
         """Get a belief by ID.
 
         Args:
-            belief_id: Belief ID (could be forge_id or memory_id)
+            belief_id: Belief ID (can be forge_id like 'belief-abc123' or Qdrant UUID)
 
         Returns:
             Belief if found
         """
-        memory = await self.provider.get(belief_id)
+        memory = None
+        forge_id = belief_id
+        qdrant_metadata: dict = {}
+
+        # Check if it's a forge_id that we have mapped
+        if belief_id in self._id_map:
+            memory_id = self._id_map[belief_id]
+            memory = await self.provider.get(memory_id)
+            # Also get the metadata from Qdrant
+            qdrant_metadata = await self._get_qdrant_metadata(memory_id)
+        # If it looks like a forge_id (starts with "belief-"), try to find it
+        elif belief_id.startswith("belief-"):
+            memory = await self._find_by_forge_id(belief_id)
+            if memory:
+                qdrant_metadata = await self._get_qdrant_metadata(memory.id)
+        else:
+            # Assume it's a Qdrant UUID, try direct lookup
+            memory = await self.provider.get(belief_id)
+            if memory:
+                qdrant_metadata = await self._get_qdrant_metadata(belief_id)
+                forge_id = qdrant_metadata.get("forge_id", belief_id)
+                # Cache the reverse mapping too
+                self._id_map[forge_id] = belief_id
+
         if not memory:
             return None
 
+        # Extract category and domain from Qdrant metadata (where we stored them)
+        category = qdrant_metadata.get("category") or None
+        domain = qdrant_metadata.get("domain") or None
+
         return Belief(
-            id=memory.id,
+            id=forge_id,
             content=memory.content,
             conviction=memory.confidence,
-            category=memory.source,
-            domain=memory.source,
-            source=memory.source or "draagon-ai",
+            category=category,
+            domain=domain,
+            source=memory.source if isinstance(memory.source, str) else "draagon-ai",
             usage_count=memory.stated_count,
             created_at=memory.created_at,
             updated_at=memory.last_accessed or memory.created_at,
-            metadata={},
+            metadata=qdrant_metadata,
         )
+
+    async def _get_qdrant_metadata(self, memory_id: str) -> dict:
+        """Get metadata from Qdrant payload.
+
+        Args:
+            memory_id: The Qdrant point ID (UUID)
+
+        Returns:
+            Metadata dict from the payload
+        """
+        try:
+            point_result = await self.provider._client.retrieve(
+                collection_name=self.provider.config.collection_name,
+                ids=[memory_id],
+                with_payload=True,
+            )
+            if point_result:
+                return point_result[0].payload.get("metadata", {})
+        except Exception as e:
+            logger.debug("Failed to retrieve Qdrant metadata", memory_id=memory_id, error=str(e))
+        return {}
+
+    async def _find_by_forge_id(self, forge_id: str) -> "Memory | None":
+        """Find a memory by its forge_id in metadata.
+
+        Note: This is a fallback when we don't have the ID in our mapping.
+        It's less efficient than a direct lookup, but necessary when the
+        adapter is restarted and loses its in-memory ID map.
+
+        Args:
+            forge_id: The forge ID to search for
+
+        Returns:
+            Memory if found
+        """
+        from draagon_ai.memory.base import MemoryType
+
+        # Search all beliefs and filter by forge_id
+        # We can't search by metadata directly, so we search with the belief content
+        # and then filter by forge_id in the metadata
+        results = await self.provider.search(
+            query="belief principle pattern",  # General query to get beliefs
+            agent_id=self.config.agent_id,
+            memory_types=[MemoryType.BELIEF],
+            limit=100,  # Should be enough for most cases
+        )
+
+        for result in results:
+            memory = result.memory
+            # The forge_id is stored in Qdrant payload's metadata field
+            # We need to access it through the raw client since Memory doesn't expose it
+            # For now, we'll use a workaround: search by content that was stored
+            # TODO: Add metadata access to draagon-ai Memory class or use Qdrant client directly
+
+            # Try to get the raw point to access metadata
+            try:
+                point_result = await self.provider._client.retrieve(
+                    collection_name=self.provider.config.collection_name,
+                    ids=[memory.id],
+                    with_payload=True,
+                )
+                if point_result:
+                    payload = point_result[0].payload
+                    metadata = payload.get("metadata", {})
+                    if metadata.get("forge_id") == forge_id:
+                        # Cache the mapping for future lookups
+                        self._id_map[forge_id] = memory.id
+                        return memory
+            except Exception as e:
+                logger.debug("Failed to retrieve metadata for belief", memory_id=memory.id, error=str(e))
+                continue
+
+        return None
 
     async def update_belief(self, belief: Belief) -> None:
         """Update a belief.
@@ -158,8 +263,19 @@ class DraagonAIAdapter:
         Args:
             belief: Updated belief
         """
+        # Resolve forge_id to qdrant_uuid
+        memory_id = self._id_map.get(belief.id)
+        if not memory_id:
+            # Try to find it
+            memory = await self._find_by_forge_id(belief.id)
+            if memory:
+                memory_id = memory.id
+            else:
+                logger.warning("Cannot update belief - not found", belief_id=belief.id)
+                return
+
         await self.provider.update(
-            memory_id=belief.id,
+            memory_id=memory_id,
             content=belief.content,
             confidence=belief.conviction,
             importance=belief.conviction,
@@ -169,12 +285,102 @@ class DraagonAIAdapter:
         """Delete a belief.
 
         Args:
-            belief_id: Belief ID
+            belief_id: Belief ID (forge_id)
 
         Returns:
             True if deleted
         """
-        return await self.provider.delete(belief_id)
+        # Resolve forge_id to qdrant_uuid
+        memory_id = self._id_map.get(belief_id)
+        if not memory_id:
+            # Try to find it
+            memory = await self._find_by_forge_id(belief_id)
+            if memory:
+                memory_id = memory.id
+            else:
+                logger.warning("Cannot delete belief - not found", belief_id=belief_id)
+                return False
+
+        result = await self.provider.delete(memory_id)
+        # Remove from mapping
+        if belief_id in self._id_map:
+            del self._id_map[belief_id]
+        return result
+
+    async def get_all_beliefs(
+        self,
+        domain: str | None = None,
+        category: str | None = None,
+        min_conviction: float | None = None,
+    ) -> list[Belief]:
+        """Get all beliefs with optional filtering.
+
+        Args:
+            domain: Optional domain filter
+            category: Optional category filter
+            min_conviction: Minimum conviction threshold
+
+        Returns:
+            List of beliefs matching filters
+        """
+        from draagon_ai.memory.base import MemoryType
+
+        # Search for all beliefs using a broad query that matches common belief content
+        # Since "*" doesn't work as wildcard, use common words found in beliefs
+        results = await self.provider.search(
+            query="always never should use avoid prefer implement handle",
+            agent_id=self.config.agent_id,
+            memory_types=[MemoryType.BELIEF],
+            limit=500,  # Get a lot to capture all beliefs
+            min_score=min_conviction or 0.0,
+        )
+
+        beliefs = []
+        seen_ids: set[str] = set()  # Track IDs to avoid duplicates
+
+        for result in results:
+            memory = result.memory
+
+            # Get metadata from Qdrant payload
+            qdrant_metadata = await self._get_qdrant_metadata(memory.id)
+            belief_domain = qdrant_metadata.get("domain") or None
+            belief_category = qdrant_metadata.get("category") or None
+            forge_id = qdrant_metadata.get("forge_id")
+
+            # Skip entries without a proper forge_id (these are test artifacts)
+            if not forge_id or not forge_id.startswith("belief-"):
+                logger.debug("Skipping memory without proper forge_id", memory_id=memory.id)
+                continue
+
+            # Skip duplicates (semantic search can return the same entry multiple times)
+            if forge_id in seen_ids:
+                continue
+            seen_ids.add(forge_id)
+
+            # Apply domain filter
+            if domain and belief_domain != domain:
+                continue
+
+            # Apply category filter
+            if category and belief_category != category:
+                continue
+
+            beliefs.append(
+                Belief(
+                    id=forge_id,
+                    content=memory.content,
+                    conviction=memory.confidence,
+                    category=belief_category,
+                    domain=belief_domain,
+                    source=memory.source if isinstance(memory.source, str) else "draagon-ai",
+                    usage_count=memory.stated_count,
+                    created_at=memory.created_at,
+                    updated_at=memory.last_accessed or memory.created_at,
+                    metadata=qdrant_metadata,
+                )
+            )
+
+        return beliefs
 
     async def store_principle(self, principle: Principle) -> str:
         """Store a principle as knowledge memory.

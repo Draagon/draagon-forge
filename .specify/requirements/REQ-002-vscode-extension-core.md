@@ -95,6 +95,7 @@ Register the following commands:
 | `draagon-forge.openPanel` | Open main panel | Ctrl+Shift+D |
 | `draagon-forge.searchContext` | Search knowledge base | Ctrl+Shift+S |
 | `draagon-forge.queryBeliefs` | Query beliefs | Ctrl+Shift+B |
+| `draagon-forge.openBeliefGraph` | Open belief graph visualization | Ctrl+Shift+G |
 | `draagon-forge.openWatchlist` | Open watchlist config | Ctrl+Shift+W |
 | `draagon-forge.openAudit` | Open commit audit | Ctrl+Shift+A |
 | `draagon-forge.reportOutcome` | Report feedback | - |
@@ -167,10 +168,17 @@ src/extension/
 │   ├── index.ts          # Command registration
 │   ├── openPanel.ts
 │   ├── searchContext.ts
-│   └── queryBeliefs.ts
+│   ├── queryBeliefs.ts
+│   └── openBeliefGraph.ts
 ├── panel/
 │   ├── ChatPanel.ts      # Main webview panel
+│   ├── BeliefPanel.ts    # Belief query/management
+│   ├── BeliefGraphPanel.ts  # Semantic graph visualization
 │   └── PanelManager.ts   # Panel lifecycle
+├── graph/
+│   ├── GraphRenderer.ts  # Cytoscape.js wrapper
+│   ├── graphStyles.ts    # Node/edge styling
+│   └── graphLayout.ts    # Layout algorithms
 └── utils/
     ├── webview.ts        # Webview helpers
     └── config.ts         # Configuration helpers

@@ -26,6 +26,63 @@
                 "${workspaceFolder}/dist/**/*.js"
             ],
             "preLaunchTask": "npm: compile"
+        },
+        {
+            "name": "Forge API Server",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "/usr/bin/python3.11",
+            "module": "draagon_forge.api.server",
+            "args": ["--host", "0.0.0.0", "--port", "8765"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "DRAAGON_USER_ID": "developer",
+                "LLM_PROVIDER": "groq",
+                "LLM_MODEL": "llama-3.3-70b-versatile",
+                "GROQ_API_KEY": "${env:GROQ_API_KEY}"
+            },
+            "envFile": "${workspaceFolder}/.env",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Forge API Server (with reload)",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "/usr/bin/python3.11",
+            "module": "draagon_forge.api.server",
+            "args": ["--host", "0.0.0.0", "--port", "8765", "--reload"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src",
+                "DRAAGON_USER_ID": "developer",
+                "LLM_PROVIDER": "groq",
+                "LLM_MODEL": "llama-3.3-70b-versatile",
+                "GROQ_API_KEY": "${env:GROQ_API_KEY}"
+            },
+            "envFile": "${workspaceFolder}/.env",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "/usr/bin/python3.11",
+            "program": "${file}",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "console": "integratedTerminal"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full Stack (API + Extension)",
+            "configurations": ["Forge API Server", "Run Extension"],
+            "stopAll": true
         }
     ]
 }

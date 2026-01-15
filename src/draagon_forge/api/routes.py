@@ -351,43 +351,186 @@ async def list_memory(
     return {"memories": memories, "count": len(memories)}
 
 
-@router.put("/beliefs/{belief_id}/conviction")
-async def adjust_belief_conviction(
+@router.patch("/beliefs/{belief_id}")
+async def adjust_belief(
     belief_id: str,
-    delta: float,
+    action: str,
+    new_content: str | None = None,
+    reason: str | None = None,
 ) -> dict[str, Any]:
-    """Adjust a belief's conviction score.
+    """Adjust a belief (reinforce, weaken, modify, or delete).
 
     Args:
         belief_id: ID of the belief to adjust
-        delta: Amount to adjust (-0.1 to +0.1 typical)
+        action: Action to take - "reinforce" | "weaken" | "modify" | "delete"
+        new_content: New content if modifying
+        reason: Reason for the adjustment
 
     Returns:
-        Updated belief info
+        Updated belief info or deletion confirmation
     """
-    # TODO: Implement actual conviction adjustment in memory
-    # For now, return a placeholder response
-    return {
-        "status": "adjusted",
-        "belief_id": belief_id,
-        "delta": delta,
-        "message": "Conviction adjustment not yet implemented",
-    }
+    from draagon_forge.mcp.tools import beliefs
+
+    if action not in ("reinforce", "weaken", "modify", "delete"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid action: {action}. Must be reinforce, weaken, modify, or delete.",
+        )
+
+    result = await beliefs.adjust_belief(
+        belief_id=belief_id,
+        action=action,
+        new_content=new_content,
+        reason=reason,
+    )
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=404, detail=result.get("message", "Belief not found"))
+
+    return result
 
 
-@router.delete("/memory/{memory_id}")
-async def delete_memory(memory_id: str) -> dict[str, Any]:
-    """Delete a memory by ID.
+@router.delete("/beliefs/{belief_id}")
+async def delete_belief(
+    belief_id: str,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Delete a belief by ID.
 
     Args:
-        memory_id: ID of the memory to delete
+        belief_id: ID of the belief to delete
+        reason: Reason for deletion
 
     Returns:
         Deletion status
     """
-    # TODO: Implement actual deletion in memory provider
-    return {
-        "status": "deleted",
-        "memory_id": memory_id,
-        "message": "Memory deletion not yet implemented",
-    }
+    from draagon_forge.mcp.tools import beliefs
+
+    result = await beliefs.adjust_belief(
+        belief_id=belief_id,
+        action="delete",
+        reason=reason,
+    )
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=404, detail=result.get("message", "Belief not found"))
+
+    return result
+
+
+# =============================================================================
+# BELIEF GRAPH VISUALIZATION ENDPOINTS
+# =============================================================================
+
+
+@router.get("/beliefs/all")
+async def get_all_beliefs(
+    domain: str | None = None,
+    category: str | None = None,
+    min_conviction: float | None = None,
+) -> dict[str, Any]:
+    """List all beliefs with optional filtering.
+
+    Args:
+        domain: Optional domain filter
+        category: Optional category filter
+        min_conviction: Minimum conviction threshold (0.0-1.0)
+
+    Returns:
+        List of all beliefs matching filters
+    """
+    from draagon_forge.mcp.tools import beliefs
+
+    result = await beliefs.list_all_beliefs(
+        domain=domain,
+        category=category,
+        min_conviction=min_conviction,
+    )
+    return result
+
+
+@router.get("/beliefs/graph")
+async def get_belief_graph(
+    center_id: str | None = None,
+    depth: int = 2,
+    include_entities: bool = True,
+    min_conviction: float = 0.0,
+    domains: str | None = None,
+) -> dict[str, Any]:
+    """Get belief graph data for visualization.
+
+    Returns graph data formatted for Cytoscape.js visualization.
+    Nodes represent beliefs and entities. Edges show relationships.
+
+    Args:
+        center_id: Optional belief ID to center the graph on
+        depth: How many hops from center (default 2)
+        include_entities: Include extracted entity nodes (default True)
+        min_conviction: Minimum conviction to include (0.0-1.0)
+        domains: Comma-separated list of domains to filter
+
+    Returns:
+        Graph data with nodes, edges, and stats
+    """
+    from draagon_forge.mcp.tools import beliefs
+
+    domain_list = domains.split(",") if domains else None
+
+    result = await beliefs.get_belief_graph(
+        center_id=center_id,
+        depth=depth,
+        include_entities=include_entities,
+        min_conviction=min_conviction,
+        domains=domain_list,
+    )
+    return result
+
+
+@router.get("/beliefs/graph/path")
+async def find_graph_path(
+    source_id: str,
+    target_id: str,
+    max_hops: int = 4,
+) -> dict[str, Any]:
+    """Find shortest path between two nodes in the belief graph.
+
+    Uses BFS to find the shortest path between two nodes (beliefs or entities).
+
+    Args:
+        source_id: Starting node ID
+        target_id: Target node ID
+        max_hops: Maximum number of edges to traverse (default 4)
+
+    Returns:
+        List of nodes in the path, or empty if no path found
+    """
+    from draagon_forge.mcp.tools import beliefs
+
+    path = await beliefs.find_graph_path(
+        source_id=source_id,
+        target_id=target_id,
+        max_hops=max_hops,
+    )
+    return {"path": path, "found": len(path) > 0, "hop_count": max(0, len(path) - 1)}
+
+
+@router.get("/beliefs/graph/entity/{entity_id}")
+async def get_entity_context(entity_id: str) -> dict[str, Any]:
+    """Get context for a specific entity.
+
+    Returns the entity details along with all beliefs that mention it.
+
+    Args:
+        entity_id: Entity ID (e.g., "entity-database")
+
+    Returns:
+        Entity details with all connected beliefs
+    """
+    from draagon_forge.mcp.tools import beliefs
+
+    result = await beliefs.get_entity_context(entity_id)
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=404, detail=result.get("message", "Entity not found"))
+
+    return result

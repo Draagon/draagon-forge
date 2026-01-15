@@ -67,9 +67,17 @@ See [REQ-031: Extension Architecture](./REQ-031-extension-architecture.md) for d
 
 | REQ ID | Feature | Priority | Complexity | Status |
 |--------|---------|----------|------------|--------|
-| [REQ-005](./REQ-005-belief-manager.md) | Belief Manager | P1 | Medium | Planned |
+| [REQ-005](./REQ-005-belief-manager.md) | Belief Manager + Graph Visualization | P1 | Medium | Planned |
 | [REQ-006](./REQ-006-watchlist-monitor.md) | Watchlist & Real-Time Monitor | P1 | High | Planned |
 | [REQ-007](./REQ-007-curiosity-engine.md) | Curiosity Engine | P1 | Medium | Planned |
+| [REQ-032](./REQ-032-semantic-belief-decomposition.md) | Semantic Belief Decomposition (MCP) | P0 | Medium | **New** |
+
+> **REQ-032 Architecture:** This is a **thin MCP wrapper** that exposes draagon-ai's FR-022
+> (Conditional Belief Architecture) via MCP tools. All semantic processing, condition extraction,
+> WordNet-based deduplication, and defeasible reasoning logic lives in draagon-ai - draagon-forge
+> only provides tool exposure and VS Code graph visualization.
+>
+> **Dependencies:** draagon-ai [FR-022](../../../draagon-ai/.specify/requirements/FR-022-conditional-belief-architecture.md), FR-006 (WSD), FR-019 (Semantic Pipeline)
 
 ### Phase 3: Agents
 
@@ -204,6 +212,8 @@ graph TD
     REQ002 --> REQ003[REQ-003: Watcher]
     REQ002 --> REQ004[REQ-004: Learner]
     REQ001 --> REQ005[REQ-005: Belief Manager]
+    REQ001 --> REQ032[REQ-032: Semantic Decomposition]
+    REQ032 --> REQ005
     REQ003 --> REQ006[REQ-006: Watchlist Monitor]
     REQ004 --> REQ007[REQ-007: Curiosity Engine]
     REQ001 --> REQ008[REQ-008: Code Review Agent]
@@ -274,9 +284,12 @@ graph TD
     style REQ029 fill:#9ff,stroke:#333,stroke-width:2px
     style REQ030 fill:#9ff,stroke:#333
     style REQ031 fill:#fcf,stroke:#333,stroke-width:2px
+    style REQ032 fill:#ffa,stroke:#333,stroke-width:2px
 ```
 
-**Critical Path:** REQ-001 → REQ-002 → REQ-003/REQ-004 → REQ-005/REQ-006
+**Critical Path:** REQ-001 → REQ-032 → REQ-005 (Semantic Decomposition enables Graph Visualization)
+
+**Foundation Path:** REQ-001 → REQ-002 → REQ-003/REQ-004 → REQ-005/REQ-006
 
 **Phase 5a Path:** REQ-001 → REQ-014 → REQ-015/REQ-016/REQ-017/REQ-018/REQ-019
 
@@ -465,7 +478,8 @@ All requirements validated against Draagon Forge constitution:
 | Requirement | draagon-ai Component | Integration Type |
 |-------------|---------------------|------------------|
 | REQ-001 | `Memory`, `AgentBelief`, `MemoryProvider` | Wrap with MCP tools |
-| REQ-005 | `AgentBelief`, `BeliefType` | UI layer on REQ-001 |
+| REQ-005 | `AgentBelief`, `BeliefType`, Graph UI | UI layer on REQ-001/032 |
+| REQ-032 | **FR-022** (`LayeredBelief`, `ConditionExtractor`, `EntityRegistry`, `DefeasibleReasoner`, `ContextSpaceManager`) | **Thin MCP wrapper** - all logic in draagon-ai |
 | REQ-015 | `tools/decorator.py` ToolRegistry | Expose via MCP |
 | REQ-016 | `memory/base.py` MemoryType.EPISODIC | Expose via MCP |
 | REQ-017 | `orchestration/loop.py` _check_if_expansion_needed | Expose via MCP |

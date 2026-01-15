@@ -1,8 +1,8 @@
 # REQ-005: Belief Manager
 
 **Priority:** P1
-**Effort:** Medium (5 days)
-**Dependencies:** REQ-001, REQ-002
+**Effort:** Medium (8 days)
+**Dependencies:** REQ-001, REQ-002, REQ-032
 **Blocks:** REQ-006, REQ-011
 **Layer:** 🟢 L3 (draagon-forge) - Programming-specific belief UI
 
@@ -177,6 +177,139 @@ async def add_belief(
 
 Handle natural language requests about beliefs:
 
+### REQ-005.6: Semantic Graph Visualization
+
+**Dependencies:** REQ-032 (Semantic Belief Decomposition)
+
+Display beliefs as an interactive semantic graph showing entity relationships, cross-belief connections, and conviction propagation:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  🕸️ Belief Graph                                            [2D] [3D] [⚙️] │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│                    ┌───────────────────────┐                                │
+│                    │   parameterized       │                                │
+│                    │   queries             │                                │
+│                    │   [TECHNIQUE]         │                                │
+│                    │   conviction: 0.87    │                                │
+│                    └───────────┬───────────┘                                │
+│                                │ PREVENTS                                    │
+│                                ▼                                             │
+│    ┌───────────────┐    ┌───────────────────┐    ┌───────────────┐         │
+│    │ "Always use   │───▶│   SQL injection   │◀───│ "SQL injection│         │
+│    │ parameterized │    │   [THREAT]        │    │ is dangerous" │         │
+│    │ queries..."   │    │   conviction: 0.92│    │               │         │
+│    │ ████████░░    │    └───────────────────┘    │ ██████░░░░    │         │
+│    └───────────────┘              │              └───────────────┘         │
+│                                   │                                         │
+│                           PRESUPPOSES                                       │
+│                                   ▼                                         │
+│                    ┌───────────────────────┐                                │
+│                    │ "Databases can be     │                                │
+│                    │ attacked"             │                                │
+│                    │ [PRESUPPOSITION]      │                                │
+│                    │ ████░░░░░░ 0.40       │                                │
+│                    └───────────────────────┘                                │
+│                                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Legend: ████ Belief  ░░░░ Entity  ─── MENTIONS  ═══ PREVENTS/CAUSES       │
+│                                                                              │
+│  Selected: "parameterized queries" (Entity)                                 │
+│  Referenced by: 3 beliefs  |  Relationships: PREVENTS(1), USED_IN(2)       │
+│                                                                              │
+│  [👁️ Focus] [📊 Stats] [🔍 Find Path] [📤 Export]                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Visualization Features:**
+
+| Feature | Description |
+|---------|-------------|
+| **Node Types** | Beliefs (rounded rect), Entities (circle), Patterns (hexagon), Principles (diamond) |
+| **Edge Types** | MENTIONS (thin), PREVENTS/CAUSES (thick colored), PRESUPPOSES (dashed) |
+| **Conviction Coloring** | Green (>0.8) → Yellow (0.5-0.8) → Red (<0.5) |
+| **Node Size** | Scaled by reference count or conviction |
+| **Clustering** | Group by domain, category, or entity type |
+| **Filtering** | Show/hide by conviction threshold, node type, domain |
+
+**Interaction Features:**
+
+| Feature | Description |
+|---------|-------------|
+| **Node Click** | Show details panel, highlight connections |
+| **Node Drag** | Rearrange layout manually |
+| **Double-Click Belief** | Open in Belief Manager for editing |
+| **Double-Click Entity** | Show all beliefs mentioning this entity |
+| **Right-Click** | Context menu: Reinforce, Weaken, Find Path, Hide |
+| **Zoom/Pan** | Mouse wheel zoom, drag to pan |
+| **Path Finding** | Highlight path between two selected nodes |
+
+**Graph Queries (via MCP):**
+
+```python
+@mcp.tool
+async def get_belief_graph(
+    center_id: str | None = None,
+    depth: int = 2,
+    include_entities: bool = True,
+    include_presuppositions: bool = True,
+    min_conviction: float = 0.0,
+    domains: list[str] | None = None,
+) -> dict:
+    """Get graph data for visualization.
+
+    Returns:
+        {
+            "nodes": [{"id", "type", "label", "conviction", "properties"}],
+            "edges": [{"source", "target", "type", "properties"}],
+            "stats": {"node_count", "edge_count", "avg_conviction"}
+        }
+    """
+
+@mcp.tool
+async def find_graph_path(
+    source_id: str,
+    target_id: str,
+    max_hops: int = 4,
+) -> list[dict]:
+    """Find shortest path between two nodes in belief graph."""
+
+@mcp.tool
+async def get_entity_context(
+    entity_id: str,
+) -> dict:
+    """Get all beliefs, patterns, principles mentioning an entity."""
+```
+
+**Acceptance Criteria:**
+- [ ] Graph renders beliefs and entities as nodes
+- [ ] Edges show relationships (MENTIONS, PREVENTS, PRESUPPOSES, etc.)
+- [ ] Conviction visualized via color and/or size
+- [ ] Click node to see details
+- [ ] Double-click belief to edit
+- [ ] Filter by conviction threshold
+- [ ] Filter by domain
+- [ ] Zoom/pan controls
+- [ ] Path finding between nodes
+- [ ] Export graph data (JSON, PNG)
+- [ ] 2D and 3D rendering options
+- [ ] Performance: Smooth with 500+ nodes
+
+**Technology Options:**
+
+| Library | Pros | Cons |
+|---------|------|------|
+| **D3.js** | Flexible, well-documented | Steeper learning curve |
+| **vis.js Network** | Easy setup, good for graphs | Less customizable |
+| **Cytoscape.js** | Made for graphs, good layouts | Heavier bundle |
+| **Three.js** (3D) | Impressive 3D viz | Complex, overkill for 2D |
+| **Force Graph** (3D) | Simple 3D graph library | Less 2D control |
+
+**Recommended:** Cytoscape.js for 2D (graph-focused) + optional Three.js for 3D mode.
+
+---
+
 ```
 User: "What do you believe about error handling?"
 Draagon: "I have 3 beliefs about error handling:
@@ -347,12 +480,25 @@ class BeliefConversationHandler:
 
 ## Acceptance Checklist
 
+### Core Belief Management
 - [ ] Belief query UI functional
 - [ ] All MCP tools implemented
 - [ ] Natural language handler working
 - [ ] Conviction adjustments correct
 - [ ] History maintained
 - [ ] Tests passing
+
+### Semantic Graph Visualization (REQ-005.6)
+- [ ] Graph panel renders in VS Code webview
+- [ ] Beliefs, entities, patterns displayed as nodes
+- [ ] Relationships displayed as edges
+- [ ] Conviction coloring working
+- [ ] Click/double-click interactions functional
+- [ ] Zoom/pan controls smooth
+- [ ] Path finding between nodes
+- [ ] Filter controls working
+- [ ] Export to JSON/PNG
+- [ ] Performance acceptable with 500+ nodes
 
 ---
 

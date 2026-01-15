@@ -443,7 +443,7 @@ npm run test:all
 ```json
 {
     "draagon-forge.enabled": true,
-    "draagon-forge.mcpServerPath": "python -m draagon_forge.mcp.server",
+    "draagon-forge.mcpServerPath": "python3.11 -m draagon_forge.mcp.server",
     "draagon-forge.neo4jUri": "bolt://localhost:7687",
     "draagon-forge.qdrantUrl": "http://localhost:6333",
     "draagon-forge.watchlist.defaultSeverity": "warn",
@@ -459,7 +459,7 @@ npm run test:all
 {
     "mcpServers": {
         "draagon-forge": {
-            "command": "python",
+            "command": "python3.11",
             "args": ["-m", "draagon_forge.mcp.server"],
             "env": {
                 "NEO4J_URI": "bolt://localhost:7687",
@@ -507,11 +507,11 @@ npm run test:all
 ## Common Commands
 
 ```bash
-# Start MCP server
-python -m draagon_forge.mcp.server
+# Start MCP server (requires Python 3.11+)
+python3.11 -m draagon_forge.mcp.server
 
 # Seed knowledge from CLAUDE.md
-python -m draagon_forge.mcp.seed --claude-md ./CLAUDE.md
+python3.11 -m draagon_forge.mcp.seed --claude-md ./CLAUDE.md
 
 # Run extension in development
 npm run watch

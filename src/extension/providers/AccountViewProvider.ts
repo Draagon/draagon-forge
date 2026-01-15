@@ -1,8 +1,7 @@
 /**
  * Account View Provider
  *
- * Provides a webview showing Claude Code account information and
- * Draagon Forge identity/stats.
+ * Provides a compact account display with expandable details.
  */
 
 import * as vscode from 'vscode';
@@ -29,6 +28,8 @@ interface ForgeAccountInfo {
     projectName: string;
     memoryCount: number;
     beliefCount: number;
+    principleCount?: number;
+    patternCount?: number;
 }
 
 interface ModelUsage {
@@ -87,7 +88,6 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-        // Handle messages from webview
         webviewView.webview.onDidReceiveMessage(async (message) => {
             switch (message.command) {
                 case 'refresh':
@@ -105,30 +105,25 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
             }
         });
 
-        // Initial load when view becomes visible
         webviewView.onDidChangeVisibility(() => {
             if (webviewView.visible && !this._accountInfo && !this._isLoading) {
                 this.refresh();
             }
         });
 
-        // Initial load
         if (webviewView.visible) {
             this.refresh();
         }
     }
 
     public async refresh(): Promise<void> {
-        if (this._isLoading) {
-            return;
-        }
+        if (this._isLoading) return;
 
         this._isLoading = true;
         this._error = null;
         this._updateView();
 
         try {
-            // Fetch account and usage data in parallel
             const [accountResponse, usageResponse] = await Promise.all([
                 fetch(`${this._apiUrl}/account`),
                 fetch(`${this._apiUrl}/account/usage`),
@@ -145,10 +140,7 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
                 usageData = await usageResponse.json() as SessionUsage;
             }
 
-            this._accountInfo = {
-                ...accountData,
-                usage: usageData,
-            };
+            this._accountInfo = { ...accountData, usage: usageData };
             this._error = null;
         } catch (e) {
             this._error = e instanceof Error ? e.message : String(e);
@@ -161,19 +153,12 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
 
     private async _resetUsage(): Promise<void> {
         try {
-            const response = await fetch(`${this._apiUrl}/account/usage/reset`, {
-                method: 'POST',
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-
-            vscode.window.showInformationMessage('Session usage has been reset');
+            const response = await fetch(`${this._apiUrl}/account/usage/reset`, { method: 'POST' });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            vscode.window.showInformationMessage('Session usage reset');
             await this.refresh();
         } catch (e) {
-            const message = e instanceof Error ? e.message : String(e);
-            vscode.window.showErrorMessage(`Failed to reset usage: ${message}`);
+            vscode.window.showErrorMessage(`Failed to reset: ${e instanceof Error ? e.message : e}`);
         }
     }
 
@@ -197,128 +182,102 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
-    <title>Account</title>
     <style>
-        :root {
-            --vscode-font-family: var(--vscode-editor-font-family, system-ui);
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: hidden; }
         body {
-            padding: 0;
-            margin: 0;
             font-family: var(--vscode-font-family);
-            font-size: 12px;
+            font-size: var(--vscode-font-size);
             color: var(--vscode-foreground);
-            background: var(--vscode-editor-background);
+            background: transparent;
         }
-        .container {
-            padding: 12px;
-        }
-        .section {
-            margin-bottom: 16px;
-            padding: 12px;
-            background: var(--vscode-editor-inactiveSelectionBackground);
-            border-radius: 6px;
-        }
-        .section-title {
-            font-size: 10px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--vscode-descriptionForeground);
-            margin-bottom: 10px;
-            padding-bottom: 6px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-        }
-        .info-row {
+        #root { height: 100%; display: flex; flex-direction: column; }
+        .header {
             display: flex;
             align-items: center;
+            padding: 6px 8px;
             gap: 8px;
-            margin-bottom: 6px;
-        }
-        .info-icon {
-            width: 16px;
-            text-align: center;
-            flex-shrink: 0;
-        }
-        .info-label {
-            color: var(--vscode-descriptionForeground);
-            min-width: 60px;
-        }
-        .info-value {
-            flex: 1;
-            font-weight: 500;
-        }
-        .badge {
-            display: inline-block;
-            padding: 2px 6px;
-            border-radius: 10px;
-            font-size: 10px;
-            font-weight: 600;
-        }
-        .badge.success {
-            background: var(--vscode-testing-iconPassed);
-            color: white;
-        }
-        .badge.warning {
-            background: var(--vscode-testing-iconQueued);
-            color: black;
-        }
-        .badge.error {
-            background: var(--vscode-testing-iconFailed);
-            color: white;
-        }
-        .badge.info {
-            background: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-top: 8px;
-        }
-        .stat-box {
-            background: var(--vscode-input-background);
-            border-radius: 4px;
-            padding: 8px;
-            text-align: center;
-        }
-        .stat-value {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--vscode-textLink-foreground);
-        }
-        .stat-label {
-            font-size: 10px;
-            color: var(--vscode-descriptionForeground);
-            margin-top: 2px;
-        }
-        .actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 12px;
-        }
-        .actions button {
-            flex: 1;
-            padding: 6px 12px;
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            border: none;
-            border-radius: 4px;
             cursor: pointer;
-            font-size: 11px;
+            border-bottom: 1px solid var(--vscode-widget-border);
         }
-        .actions button:hover {
-            background: var(--vscode-button-secondaryHoverBackground);
-        }
-        .actions button.primary {
+        .header:hover { background: var(--vscode-list-hoverBackground); }
+        .avatar {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
             background: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 11px;
+            flex-shrink: 0;
         }
-        .actions button.primary:hover {
-            background: var(--vscode-button-hoverBackground);
+        .user-info { flex: 1; min-width: 0; }
+        .user-name {
+            font-weight: 500;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        button.small {
+        .user-meta {
+            font-size: 10px;
+            color: var(--vscode-descriptionForeground);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .status-dot.online { background: var(--vscode-terminal-ansiGreen); }
+        .status-dot.offline { background: var(--vscode-terminal-ansiRed); }
+        .expand-icon {
+            color: var(--vscode-descriptionForeground);
+            font-size: 10px;
+            transition: transform 0.15s;
+        }
+        .expanded .expand-icon { transform: rotate(180deg); }
+        .details {
+            display: none;
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        .expanded .details { display: block; }
+        .section { margin-bottom: 10px; }
+        .section-title {
+            font-size: 9px;
+            font-weight: 600;
+            color: var(--vscode-descriptionForeground);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px 12px;
+        }
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            padding: 1px 0;
+        }
+        .info-label { color: var(--vscode-descriptionForeground); }
+        .info-value { font-weight: 500; }
+        .actions {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--vscode-widget-border);
+        }
+        button {
+            flex: 1;
             padding: 4px 8px;
             font-size: 10px;
             background: var(--vscode-button-secondaryBackground);
@@ -327,285 +286,133 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
             border-radius: 3px;
             cursor: pointer;
         }
-        button.small:hover {
-            background: var(--vscode-button-secondaryHoverBackground);
-        }
-        .loading {
+        button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+        .loading, .error {
+            padding: 12px;
             text-align: center;
-            padding: 20px;
+            font-size: 11px;
             color: var(--vscode-descriptionForeground);
         }
-        .error {
-            text-align: center;
-            padding: 20px;
-            color: var(--vscode-errorForeground);
-        }
-        .not-authenticated {
-            text-align: center;
-            padding: 20px;
-        }
-        .not-authenticated p {
-            margin-bottom: 12px;
-            color: var(--vscode-descriptionForeground);
-        }
-        .toolbar {
-            display: flex;
-            justify-content: flex-end;
-            padding: 8px 12px;
-            border-bottom: 1px solid var(--vscode-panel-border);
-        }
-        .toolbar button {
-            padding: 4px 8px;
-            background: transparent;
-            color: var(--vscode-foreground);
-            border: none;
-            cursor: pointer;
-            font-size: 12px;
-            opacity: 0.7;
-        }
-        .toolbar button:hover {
-            opacity: 1;
-        }
+        .error { color: var(--vscode-errorForeground); }
     </style>
 </head>
 <body>
-    <div class="toolbar">
-        <button id="refreshBtn" title="Refresh">&#x21bb;</button>
-    </div>
-    <div class="container" id="content">
-        <div class="loading">Loading account information...</div>
-    </div>
-
+    <div id="root"></div>
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
-        const content = document.getElementById('content');
-        const refreshBtn = document.getElementById('refreshBtn');
+        const root = document.getElementById('root');
+        let expanded = false;
+        let lastData = null;
 
-        refreshBtn.addEventListener('click', () => {
-            vscode.postMessage({ command: 'refresh' });
-        });
-
-        window.addEventListener('message', event => {
-            const message = event.data;
-
-            if (message.type === 'update') {
-                renderAccount(message.data, message.isLoading, message.error);
+        window.addEventListener('message', e => {
+            if (e.data.type === 'update') {
+                lastData = e.data;
+                render(e.data);
             }
         });
 
-        function renderAccount(data, isLoading, error) {
+        function toggle() {
+            expanded = !expanded;
+            if (lastData) render(lastData);
+        }
+
+        function render({ data, isLoading, error }) {
             if (isLoading) {
-                content.innerHTML = '<div class="loading">Loading account information...</div>';
+                root.innerHTML = '<div class="loading">Loading...</div>';
                 return;
             }
-
             if (error) {
-                content.innerHTML = \`
-                    <div class="error">
-                        <p>Failed to load account: \${error}</p>
-                        <button onclick="vscode.postMessage({ command: 'refresh' })">Retry</button>
-                    </div>
-                \`;
+                root.innerHTML = '<div class="error">' + error + '</div>';
                 return;
             }
-
             if (!data) {
-                content.innerHTML = '<div class="loading">Waiting for data...</div>';
+                root.innerHTML = '<div class="loading">Connecting...</div>';
                 return;
             }
 
-            const claude = data.claude || {};
-            const forge = data.forge || {};
+            const c = data.claude || {};
+            const f = data.forge || {};
+            const u = data.usage || {};
+            const name = c.displayName || (c.email ? c.email.split('@')[0] : null) || 'Developer';
+            const initial = name.charAt(0).toUpperCase();
 
-            let html = '';
+            let html = '<div class="container' + (expanded ? ' expanded' : '') + '">';
 
-            // Claude Code Section
-            html += '<div class="section">';
-            html += '<div class="section-title">Claude Code</div>';
-
-            if (claude.authenticated) {
-                if (claude.displayName || claude.email) {
-                    html += \`
-                        <div class="info-row">
-                            <span class="info-icon">&#x1F464;</span>
-                            <span class="info-value">\${claude.displayName || claude.email}</span>
-                        </div>
-                    \`;
-                }
-
-                if (claude.email && claude.displayName) {
-                    html += \`
-                        <div class="info-row">
-                            <span class="info-icon">&#x2709;</span>
-                            <span class="info-value">\${claude.email}</span>
-                        </div>
-                    \`;
-                }
-
-                if (claude.organizationName) {
-                    html += \`
-                        <div class="info-row">
-                            <span class="info-icon">&#x1F3E2;</span>
-                            <span class="info-value">\${claude.organizationName}</span>
-                            \${claude.organizationRole ? \`<span class="badge info">\${claude.organizationRole}</span>\` : ''}
-                        </div>
-                    \`;
-                }
-
-                html += \`
-                    <div class="info-row">
-                        <span class="info-icon">&#x1F512;</span>
-                        <span class="info-label">Auth:</span>
-                        <span class="info-value">\${claude.authType === 'oauth' ? 'OAuth' : claude.authType === 'api_key' ? 'API Key' : 'Unknown'}</span>
-                        <span class="badge \${claude.hasSubscription ? 'success' : 'warning'}">\${claude.hasSubscription ? 'Pro' : 'Free'}</span>
-                    </div>
-                \`;
-
-                // Stats grid
-                html += '<div class="stats-grid">';
-                html += \`
-                    <div class="stat-box">
-                        <div class="stat-value">\${formatNumber(claude.numStartups || 0)}</div>
-                        <div class="stat-label">Sessions</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value">\${formatNumber(claude.promptCount || 0)}</div>
-                        <div class="stat-label">Prompts</div>
-                    </div>
-                \`;
-                html += '</div>';
-            } else {
-                html += \`
-                    <div class="not-authenticated">
-                        <p>Not authenticated with Claude Code</p>
-                        <button class="primary" onclick="vscode.postMessage({ command: 'openClaude' })">Sign In</button>
-                    </div>
-                \`;
-            }
-
-            html += '</div>'; // End Claude section
-
-            // Forge Section
-            html += '<div class="section">';
-            html += '<div class="section-title">Draagon Forge</div>';
-
-            html += \`
-                <div class="info-row">
-                    <span class="info-icon">&#x1F525;</span>
-                    <span class="info-label">User:</span>
-                    <span class="info-value">\${forge.userId || 'unknown'}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-icon">&#x1F916;</span>
-                    <span class="info-label">Agent:</span>
-                    <span class="info-value">\${forge.agentId || 'draagon-forge'}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-icon">&#x1F4C1;</span>
-                    <span class="info-label">Project:</span>
-                    <span class="info-value">\${forge.projectName || 'default'}</span>
-                </div>
-            \`;
-
-            // Forge stats grid
-            html += '<div class="stats-grid">';
-            html += \`
-                <div class="stat-box">
-                    <div class="stat-value">\${forge.memoryCount || 0}</div>
-                    <div class="stat-label">Memories</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-value">\${forge.beliefCount || 0}</div>
-                    <div class="stat-label">Beliefs</div>
-                </div>
-            \`;
+            // Compact header
+            html += '<div class="header" data-action="toggle">';
+            html += '<div class="avatar">' + initial + '</div>';
+            html += '<div class="user-info">';
+            html += '<div class="user-name">' + name + '</div>';
+            html += '<div class="user-meta">' + (c.email || 'Local Mode') + '</div>';
+            html += '</div>';
+            html += '<div class="status-dot ' + (c.authenticated ? 'online' : 'offline') + '"></div>';
+            html += '<span class="expand-icon">▼</span>';
             html += '</div>';
 
-            html += '</div>'; // End Forge section
+            // Expandable details
+            html += '<div class="details">';
 
-            // Usage Section
-            const usage = data.usage;
-            if (usage) {
+            // Claude section
+            if (c.email) {
                 html += '<div class="section">';
-                html += '<div class="section-title">Session Usage</div>';
-
-                // Token totals
-                html += '<div class="stats-grid">';
-                html += \`
-                    <div class="stat-box">
-                        <div class="stat-value">\${formatNumber(usage.totalTokens || 0)}</div>
-                        <div class="stat-label">Tokens</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value">\${usage.totalCalls || 0}</div>
-                        <div class="stat-label">Calls</div>
-                    </div>
-                \`;
-                html += '</div>';
-
-                // Cost
-                const costDollars = (usage.totalCostCents || 0) / 100;
-                html += \`
-                    <div class="info-row" style="margin-top: 10px;">
-                        <span class="info-icon">&#x1F4B0;</span>
-                        <span class="info-label">Est. Cost:</span>
-                        <span class="info-value">\${costDollars < 0.01 ? 'Free' : '$' + costDollars.toFixed(2)}</span>
-                    </div>
-                \`;
-
-                // Model breakdown
-                const models = usage.models || {};
-                const modelEntries = Object.entries(models);
-                if (modelEntries.length > 0) {
-                    html += '<div style="margin-top: 10px; font-size: 10px; color: var(--vscode-descriptionForeground);">Models:</div>';
-                    html += '<div style="margin-top: 4px;">';
-                    for (const [modelId, model] of modelEntries) {
-                        const modelCost = (model.estimatedCostCents || 0) / 100;
-                        const icon = model.provider === 'groq' ? '&#x26A1;' : model.provider === 'anthropic' ? '&#x1F9E0;' : '&#x1F916;';
-                        html += \`
-                            <div class="info-row" style="font-size: 11px;">
-                                <span class="info-icon" style="font-size: 10px;">\${icon}</span>
-                                <span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">\${modelId.split('/').pop() || modelId}</span>
-                                <span style="color: var(--vscode-descriptionForeground);">\${model.callCount}x</span>
-                                <span style="min-width: 50px; text-align: right;">\${modelCost < 0.01 ? 'Free' : '$' + modelCost.toFixed(2)}</span>
-                            </div>
-                        \`;
-                    }
-                    html += '</div>';
+                html += '<div class="section-title">Claude Account</div>';
+                html += '<div class="info-grid">';
+                html += '<div class="info-item"><span class="info-label">Auth</span><span class="info-value">' + (c.authType === 'oauth' ? 'OAuth' : 'API Key') + '</span></div>';
+                html += '<div class="info-item"><span class="info-label">Plan</span><span class="info-value">' + (c.hasSubscription ? 'Pro' : 'Free') + '</span></div>';
+                if (c.organizationName) {
+                    html += '<div class="info-item"><span class="info-label">Org</span><span class="info-value">' + c.organizationName + '</span></div>';
                 }
-
-                // Reset button
-                html += \`
-                    <div style="margin-top: 10px;">
-                        <button class="small" onclick="vscode.postMessage({ command: 'resetUsage' })">Reset Session</button>
-                    </div>
-                \`;
-
-                html += '</div>'; // End Usage section
+                html += '<div class="info-item"><span class="info-label">Sessions</span><span class="info-value">' + (c.numStartups || 0) + '</span></div>';
+                html += '</div></div>';
             }
 
-            // Actions
-            html += \`
-                <div class="actions">
-                    <button onclick="vscode.postMessage({ command: 'openClaude' })">Open Claude</button>
-                    <button onclick="vscode.postMessage({ command: 'openDocs' })">Docs</button>
-                </div>
-            \`;
+            // Forge section
+            html += '<div class="section">';
+            html += '<div class="section-title">Forge Context</div>';
+            html += '<div class="info-grid">';
+            html += '<div class="info-item"><span class="info-label">Agent</span><span class="info-value">' + (f.agentId || 'draagon-forge') + '</span></div>';
+            html += '<div class="info-item"><span class="info-label">Project</span><span class="info-value">' + (f.projectName || 'default') + '</span></div>';
+            html += '<div class="info-item"><span class="info-label">Beliefs</span><span class="info-value">' + (f.beliefCount || 0) + '</span></div>';
+            html += '<div class="info-item"><span class="info-label">Memories</span><span class="info-value">' + (f.memoryCount || 0) + '</span></div>';
+            html += '</div></div>';
 
-            content.innerHTML = html;
+            // Session usage
+            if (u.totalTokens > 0 || u.totalCalls > 0) {
+                const cost = (u.totalCostCents || 0) / 100;
+                html += '<div class="section">';
+                html += '<div class="section-title">This Session</div>';
+                html += '<div class="info-grid">';
+                html += '<div class="info-item"><span class="info-label">Tokens</span><span class="info-value">' + fmt(u.totalTokens || 0) + '</span></div>';
+                html += '<div class="info-item"><span class="info-label">Calls</span><span class="info-value">' + (u.totalCalls || 0) + '</span></div>';
+                html += '<div class="info-item"><span class="info-label">Cost</span><span class="info-value">' + (cost > 0 ? '$' + cost.toFixed(2) : 'Free') + '</span></div>';
+                html += '</div></div>';
+            }
+
+            // Action buttons
+            html += '<div class="actions">';
+            html += '<button data-action="openClaude">Claude.ai</button>';
+            html += '<button data-action="openDocs">Docs</button>';
+            html += '<button data-action="refresh">Refresh</button>';
+            html += '</div>';
+
+            html += '</div></div>';
+            root.innerHTML = html;
         }
 
-        function formatNumber(num) {
-            if (num >= 1000000) {
-                return (num / 1000000).toFixed(1) + 'M';
-            }
-            if (num >= 1000) {
-                return (num / 1000).toFixed(1) + 'K';
-            }
-            return num.toString();
+        function fmt(n) {
+            if (n >= 1e6) return (n/1e6).toFixed(1) + 'M';
+            if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+            return String(n);
         }
 
-        // Request initial data
+        root.addEventListener('click', function(e) {
+            const target = e.target.closest('[data-action]');
+            if (!target) return;
+            const action = target.dataset.action;
+            if (action === 'toggle') toggle();
+            else vscode.postMessage({ command: action });
+        });
+
         vscode.postMessage({ command: 'refresh' });
     </script>
 </body>
@@ -621,7 +428,5 @@ export class AccountViewProvider implements vscode.WebviewViewProvider {
         return text;
     }
 
-    public dispose(): void {
-        // Cleanup if needed
-    }
+    public dispose(): void {}
 }

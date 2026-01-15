@@ -119,17 +119,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             )
         );
 
-        // Memory view (tree view for beliefs/insights)
-        memoryViewProvider = new MemoryViewProvider(apiUrl);
+        // Memory view (webview for beliefs/insights)
+        memoryViewProvider = new MemoryViewProvider(context.extensionUri, apiUrl);
         context.subscriptions.push(
-            vscode.window.registerTreeDataProvider(
-                'draagon-forge.memoryView',
+            vscode.window.registerWebviewViewProvider(
+                MemoryViewProvider.viewType,
                 memoryViewProvider
             )
         );
-
-        // Initial memory load
-        memoryViewProvider.refresh();
 
         // 6. Register commands (uses both API and MCP clients)
         const commands = registerCommands(context, apiClient, mcpClient, panelManager, memoryViewProvider, accountViewProvider);

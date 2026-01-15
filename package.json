@@ -110,6 +110,23 @@
                 "category": "Draagon Forge"
             },
             {
+                "command": "draagon-forge.deleteBelief",
+                "title": "Draagon Forge: Delete Belief",
+                "category": "Draagon Forge",
+                "icon": "$(trash)"
+            },
+            {
+                "command": "draagon-forge.openBeliefPanel",
+                "title": "Draagon Forge: Open Belief Manager",
+                "category": "Draagon Forge"
+            },
+            {
+                "command": "draagon-forge.openBeliefGraph",
+                "title": "Draagon Forge: Open Belief Graph",
+                "category": "Draagon Forge",
+                "icon": "$(type-hierarchy)"
+            },
+            {
                 "command": "draagon-forge.refreshAccount",
                 "title": "Draagon Forge: Refresh Account",
                 "category": "Draagon Forge",
@@ -143,7 +160,7 @@
                     "name": "Inspector"
                 },
                 {
-                    "type": "tree",
+                    "type": "webview",
                     "id": "draagon-forge.memoryView",
                     "name": "Memory"
                 }
@@ -171,12 +188,17 @@
                 {
                     "command": "draagon-forge.reinforceBelief",
                     "when": "view == draagon-forge.memoryView && viewItem == memoryItem",
-                    "group": "inline"
+                    "group": "inline@1"
                 },
                 {
                     "command": "draagon-forge.weakenBelief",
                     "when": "view == draagon-forge.memoryView && viewItem == memoryItem",
-                    "group": "inline"
+                    "group": "inline@2"
+                },
+                {
+                    "command": "draagon-forge.deleteBelief",
+                    "when": "view == draagon-forge.memoryView && viewItem == memoryItem",
+                    "group": "inline@3"
                 }
             ]
         },
@@ -200,6 +222,11 @@
                 "command": "draagon-forge.openAudit",
                 "key": "ctrl+shift+a",
                 "mac": "cmd+shift+a"
+            },
+            {
+                "command": "draagon-forge.openBeliefGraph",
+                "key": "ctrl+shift+g",
+                "mac": "cmd+shift+g"
             }
         ],
         "configuration": {

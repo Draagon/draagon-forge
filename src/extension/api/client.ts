@@ -40,6 +40,55 @@ interface SearchResult {
 }
 
 /**
+ * Graph node for visualization
+ */
+export interface GraphNode {
+    id: string;
+    type: 'belief' | 'entity' | 'pattern' | 'principle';
+    label: string;
+    full_content?: string;
+    conviction?: number;
+    category?: string;
+    domain?: string;
+    color: string;
+    size: number;
+}
+
+/**
+ * Graph edge for visualization
+ */
+export interface GraphEdge {
+    source: string;
+    target: string;
+    type: string;
+    color: string;
+}
+
+/**
+ * Graph data structure for visualization
+ */
+export interface GraphData {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+    stats: {
+        node_count: number;
+        edge_count: number;
+        belief_count: number;
+        entity_count: number;
+        avg_conviction: number;
+    };
+}
+
+/**
+ * Entity context with related beliefs
+ */
+export interface EntityContext {
+    entity: GraphNode;
+    beliefs: GraphNode[];
+    belief_count: number;
+}
+
+/**
  * Options for creating the API client
  */
 export interface ForgeAPIClientOptions {
@@ -145,20 +194,56 @@ export class ForgeAPIClient implements vscode.Disposable {
      */
     async addBelief(
         content: string,
-        options?: { category?: string; domain?: string; conviction?: number }
-    ): Promise<{ id: string }> {
-        const params = new URLSearchParams({ content });
-        if (options?.category) params.set('category', options.category);
-        if (options?.domain) params.set('domain', options.domain);
-        if (options?.conviction) params.set('conviction', String(options.conviction));
-
+        options?: {
+            type?: 'principle' | 'pattern' | 'learning' | 'insight';
+            category?: string;
+            domain?: string;
+            conviction?: number;
+            rationale?: string;
+        }
+    ): Promise<{ id: string; success: boolean }> {
         return this.fetch('/beliefs', {
             method: 'POST',
-            body: params.toString(),
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
+            body: JSON.stringify({
+                content,
+                belief_type: options?.type || 'learning',
+                category: options?.category,
+                domain: options?.domain,
+                conviction: options?.conviction,
+                rationale: options?.rationale,
+            }),
         });
+    }
+
+    /**
+     * Adjust a belief (reinforce, weaken, modify, or delete).
+     */
+    async adjustBelief(
+        beliefId: string,
+        options: {
+            action: 'reinforce' | 'weaken' | 'modify' | 'delete';
+            content?: string;
+            reason?: string;
+        }
+    ): Promise<{ success: boolean; conviction?: number; message?: string }> {
+        return this.fetch(`/beliefs/${encodeURIComponent(beliefId)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+                action: options.action,
+                new_content: options.content,
+                reason: options.reason,
+            }),
+        });
+    }
+
+    /**
+     * Delete a belief.
+     */
+    async deleteBelief(
+        beliefId: string,
+        reason?: string
+    ): Promise<{ success: boolean; message?: string }> {
+        return this.adjustBelief(beliefId, { action: 'delete', reason });
     }
 
     /**
@@ -166,6 +251,77 @@ export class ForgeAPIClient implements vscode.Disposable {
      */
     resetConversation(): void {
         this.conversationId = null;
+    }
+
+    // =========================================================================
+    // Graph Visualization API
+    // =========================================================================
+
+    /**
+     * Get belief graph data for visualization.
+     */
+    async getBeliefGraph(options?: {
+        centerId?: string;
+        depth?: number;
+        includeEntities?: boolean;
+        minConviction?: number;
+        domains?: string[];
+    }): Promise<GraphData> {
+        const params = new URLSearchParams();
+        if (options?.centerId) params.set('center_id', options.centerId);
+        if (options?.depth !== undefined) params.set('depth', String(options.depth));
+        if (options?.includeEntities !== undefined) params.set('include_entities', String(options.includeEntities));
+        if (options?.minConviction !== undefined) params.set('min_conviction', String(options.minConviction));
+        if (options?.domains) params.set('domains', options.domains.join(','));
+
+        const query = params.toString();
+        return this.fetch<GraphData>(`/beliefs/graph${query ? `?${query}` : ''}`);
+    }
+
+    /**
+     * Find path between two nodes in the belief graph.
+     */
+    async findGraphPath(
+        sourceId: string,
+        targetId: string,
+        maxHops?: number
+    ): Promise<GraphNode[]> {
+        const params = new URLSearchParams({
+            source_id: sourceId,
+            target_id: targetId,
+        });
+        if (maxHops !== undefined) params.set('max_hops', String(maxHops));
+
+        const response = await this.fetch<{ path: GraphNode[] }>(
+            `/beliefs/graph/path?${params.toString()}`
+        );
+        return response.path;
+    }
+
+    /**
+     * Get context for a specific entity.
+     */
+    async getEntityContext(entityId: string): Promise<EntityContext> {
+        return this.fetch<EntityContext>(
+            `/beliefs/graph/entity/${encodeURIComponent(entityId)}`
+        );
+    }
+
+    /**
+     * List all beliefs with optional filtering.
+     */
+    async listAllBeliefs(options?: {
+        domain?: string;
+        category?: string;
+        minConviction?: number;
+    }): Promise<{ beliefs: SearchResult[]; count: number }> {
+        const params = new URLSearchParams();
+        if (options?.domain) params.set('domain', options.domain);
+        if (options?.category) params.set('category', options.category);
+        if (options?.minConviction !== undefined) params.set('min_conviction', String(options.minConviction));
+
+        const query = params.toString();
+        return this.fetch(`/beliefs/all${query ? `?${query}` : ''}`);
     }
 
     /**

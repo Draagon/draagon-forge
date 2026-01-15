@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { ForgeAPIClient } from '../api/client';
 import { ChatPanel } from './ChatPanel';
 import { BeliefPanel } from './BeliefPanel';
+import { BeliefGraphPanel } from './BeliefGraphPanel';
 import { WatchlistPanel } from './WatchlistPanel';
 import { AuditPanel } from './AuditPanel';
 
@@ -16,6 +17,7 @@ import { AuditPanel } from './AuditPanel';
 export class PanelManager implements vscode.Disposable {
     private chatPanel: ChatPanel | null = null;
     private beliefPanel: BeliefPanel | null = null;
+    private beliefGraphPanel: BeliefGraphPanel | null = null;
     private watchlistPanel: WatchlistPanel | null = null;
     private auditPanel: AuditPanel | null = null;
 
@@ -54,6 +56,20 @@ export class PanelManager implements vscode.Disposable {
     }
 
     /**
+     * Open or reveal the belief graph panel.
+     */
+    openBeliefGraphPanel(): void {
+        if (this.beliefGraphPanel) {
+            this.beliefGraphPanel.reveal();
+        } else {
+            this.beliefGraphPanel = new BeliefGraphPanel(this.context, this.apiClient);
+            this.beliefGraphPanel.onDidDispose(() => {
+                this.beliefGraphPanel = null;
+            });
+        }
+    }
+
+    /**
      * Open or reveal the watchlist panel.
      */
     openWatchlistPanel(): void {
@@ -87,6 +103,7 @@ export class PanelManager implements vscode.Disposable {
     dispose(): void {
         this.chatPanel?.dispose();
         this.beliefPanel?.dispose();
+        this.beliefGraphPanel?.dispose();
         this.watchlistPanel?.dispose();
         this.auditPanel?.dispose();
     }

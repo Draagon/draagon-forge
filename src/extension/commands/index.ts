@@ -13,6 +13,7 @@ import { MemoryViewProvider } from '../providers/MemoryViewProvider';
 export interface IPanelManager {
     openChatPanel(): void;
     openBeliefPanel(): void;
+    openBeliefGraphPanel(): void;
     openWatchlistPanel(): void;
     openAuditPanel(): void;
 }
@@ -137,6 +138,16 @@ export function registerCommands(
             panelManager.openWatchlistPanel();
         }),
 
+        // Open belief manager panel
+        vscode.commands.registerCommand('draagon-forge.openBeliefPanel', () => {
+            panelManager.openBeliefPanel();
+        }),
+
+        // Open belief graph visualization
+        vscode.commands.registerCommand('draagon-forge.openBeliefGraph', () => {
+            panelManager.openBeliefGraphPanel();
+        }),
+
         // Open audit panel
         vscode.commands.registerCommand('draagon-forge.openAudit', () => {
             panelManager.openAuditPanel();
@@ -222,10 +233,17 @@ export function registerCommands(
 
             if (!content) return;
 
-            const category = await vscode.window.showQuickPick(
-                ['principle', 'pattern', 'learning', 'insight'],
-                { placeHolder: 'Select category' }
+            const typeChoice = await vscode.window.showQuickPick(
+                [
+                    { label: 'Principle', value: 'principle' as const, description: 'Architectural rules' },
+                    { label: 'Pattern', value: 'pattern' as const, description: 'Code examples' },
+                    { label: 'Learning', value: 'learning' as const, description: 'Extracted insights' },
+                    { label: 'Insight', value: 'insight' as const, description: 'Observations' },
+                ],
+                { placeHolder: 'Select belief type' }
             );
+
+            if (!typeChoice) return;
 
             const domain = await vscode.window.showInputBox({
                 prompt: 'Domain (optional)',
@@ -247,16 +265,11 @@ export function registerCommands(
             const conviction = parseFloat(convictionStr || '0.7');
 
             if (memoryViewProvider) {
-                const success = await memoryViewProvider.addBelief(
-                    content,
-                    category,
-                    domain || undefined,
-                    conviction
-                );
-
-                if (success) {
-                    vscode.window.showInformationMessage('Belief added successfully');
-                }
+                await memoryViewProvider.addBelief(content, {
+                    type: typeChoice.value,
+                    domain: domain || undefined,
+                    conviction,
+                });
             }
         }),
 
@@ -337,24 +350,31 @@ export function registerCommands(
             `;
         }),
 
-        // Reinforce belief
+        // Reinforce belief (+5% conviction)
         vscode.commands.registerCommand('draagon-forge.reinforceBelief', async (item: MemoryItem) => {
             if (memoryViewProvider && item?.id) {
-                const success = await memoryViewProvider.adjustConviction(item.id, 0.05);
-                if (success) {
-                    vscode.window.showInformationMessage(`Reinforced belief: +5% conviction`);
-                    await memoryViewProvider.refresh();
-                }
+                await memoryViewProvider.adjustConviction(item.id, 0.05);
             }
         }),
 
-        // Weaken belief
+        // Weaken belief (-8% conviction)
         vscode.commands.registerCommand('draagon-forge.weakenBelief', async (item: MemoryItem) => {
             if (memoryViewProvider && item?.id) {
-                const success = await memoryViewProvider.adjustConviction(item.id, -0.08);
-                if (success) {
-                    vscode.window.showInformationMessage(`Weakened belief: -8% conviction`);
-                    await memoryViewProvider.refresh();
+                await memoryViewProvider.adjustConviction(item.id, -0.08);
+            }
+        }),
+
+        // Delete belief
+        vscode.commands.registerCommand('draagon-forge.deleteBelief', async (item: MemoryItem) => {
+            if (memoryViewProvider && item?.id) {
+                const confirm = await vscode.window.showWarningMessage(
+                    `Delete belief: "${item.content.substring(0, 50)}..."?`,
+                    { modal: true },
+                    'Delete'
+                );
+
+                if (confirm === 'Delete') {
+                    await memoryViewProvider.deleteMemory(item.id, 'Deleted via command palette');
                 }
             }
         }),

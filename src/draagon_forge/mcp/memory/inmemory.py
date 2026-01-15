@@ -20,6 +20,28 @@ class InMemoryBackend:
         self.patterns: dict[str, Pattern] = {}
         self.review_items: dict[str, ReviewItem] = {}
 
+    def _calculate_match_score(self, query_words: list[str], text: str) -> float:
+        """Calculate match score based on keyword overlap.
+
+        Args:
+            query_words: Query split into lowercase words
+            text: Text to match against
+
+        Returns:
+            Score from 0.0 to 1.0 based on word overlap
+        """
+        text_lower = text.lower()
+        text_words = set(text_lower.split())
+
+        # Count matching words
+        matches = sum(1 for word in query_words if word in text_words or word in text_lower)
+
+        if matches == 0:
+            return 0.0
+
+        # Score based on percentage of query words matched
+        return matches / len(query_words)
+
     async def search(
         self,
         query: str,
@@ -27,7 +49,7 @@ class InMemoryBackend:
         domain: str | None = None,
         min_conviction: float | None = None,
     ) -> list[SearchResult]:
-        """Search for relevant content using simple text matching.
+        """Search for relevant content using keyword matching.
 
         Args:
             query: Search query
@@ -39,7 +61,10 @@ class InMemoryBackend:
             List of search results ordered by relevance
         """
         results: list[SearchResult] = []
-        query_lower = query.lower()
+        # Split query into words for keyword matching
+        query_words = [w.lower().strip() for w in query.split() if w.strip()]
+        if not query_words:
+            return results
 
         # Search beliefs
         for belief in self.beliefs.values():
@@ -48,10 +73,8 @@ class InMemoryBackend:
             if min_conviction and belief.conviction < min_conviction:
                 continue
 
-            content_lower = belief.content.lower()
-            if query_lower in content_lower:
-                # Simple scoring based on position and length
-                score = 1.0 - (content_lower.index(query_lower) / len(content_lower))
+            score = self._calculate_match_score(query_words, belief.content)
+            if score > 0:
                 results.append(
                     SearchResult(
                         id=belief.id,
@@ -71,9 +94,8 @@ class InMemoryBackend:
             if min_conviction and principle.conviction < min_conviction:
                 continue
 
-            content_lower = principle.content.lower()
-            if query_lower in content_lower:
-                score = 1.0 - (content_lower.index(query_lower) / len(content_lower))
+            score = self._calculate_match_score(query_words, principle.content)
+            if score > 0:
                 results.append(
                     SearchResult(
                         id=principle.id,
@@ -91,9 +113,9 @@ class InMemoryBackend:
             if domain and pattern.domain != domain:
                 continue
 
-            searchable = f"{pattern.name} {pattern.description}".lower()
-            if query_lower in searchable:
-                score = 1.0 - (searchable.index(query_lower) / len(searchable))
+            searchable = f"{pattern.name} {pattern.description}"
+            score = self._calculate_match_score(query_words, searchable)
+            if score > 0:
                 results.append(
                     SearchResult(
                         id=pattern.id,
@@ -118,6 +140,37 @@ class InMemoryBackend:
     async def get_belief(self, belief_id: str) -> Belief | None:
         """Get a belief by ID."""
         return self.beliefs.get(belief_id)
+
+    async def get_all_beliefs(
+        self,
+        domain: str | None = None,
+        category: str | None = None,
+        min_conviction: float | None = None,
+    ) -> list[Belief]:
+        """Get all beliefs with optional filtering.
+
+        Args:
+            domain: Optional domain filter
+            category: Optional category filter
+            min_conviction: Minimum conviction threshold
+
+        Returns:
+            List of beliefs matching the filters
+        """
+        beliefs = list(self.beliefs.values())
+
+        if domain:
+            beliefs = [b for b in beliefs if b.domain == domain]
+
+        if category:
+            beliefs = [b for b in beliefs if b.category == category]
+
+        if min_conviction is not None:
+            beliefs = [b for b in beliefs if b.conviction >= min_conviction]
+
+        # Sort by conviction descending
+        beliefs.sort(key=lambda b: b.conviction, reverse=True)
+        return beliefs
 
     async def update_belief(self, belief: Belief) -> None:
         """Update a belief."""

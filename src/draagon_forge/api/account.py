@@ -36,30 +36,33 @@ async def get_forge_account() -> dict[str, Any]:
     Returns:
         Forge account information including user_id, agent_id, and memory counts
     """
-    # Import here to avoid circular imports
-    from draagon_forge.mcp.server import get_shared_memory
+    # Use the same memory backend as beliefs endpoint
+    from draagon_forge.mcp.memory import get_memory
 
-    memory = get_shared_memory()
+    memory = get_memory()
 
     # Get memory counts
     memory_count = 0
     belief_count = 0
+    principle_count = 0
+    pattern_count = 0
 
-    if memory:
-        try:
-            # Search for all memories
-            all_memories = await memory.search(
-                query="*",
-                limit=1000,
-                user_id=config.user_id,
-            )
-            memory_count = len(all_memories)
+    try:
+        # Get all beliefs using the proper method
+        beliefs = await memory.get_all_beliefs()
+        belief_count = len(beliefs)
 
-            # Count beliefs specifically
-            beliefs = [m for m in all_memories if getattr(m, "type", None) == "belief"]
-            belief_count = len(beliefs)
-        except Exception as e:
-            print(f"Warning: Failed to get memory counts: {e}")
+        # Get principles and patterns for total memory count
+        principles = await memory.get_principles()
+        principle_count = len(principles)
+
+        patterns = await memory.get_patterns()
+        pattern_count = len(patterns)
+
+        # Total memory is all stored items
+        memory_count = belief_count + principle_count + pattern_count
+    except Exception as e:
+        print(f"Warning: Failed to get memory counts: {e}")
 
     return {
         "userId": config.user_id,
@@ -67,6 +70,8 @@ async def get_forge_account() -> dict[str, Any]:
         "projectName": config.project_name,
         "memoryCount": memory_count,
         "beliefCount": belief_count,
+        "principleCount": principle_count,
+        "patternCount": pattern_count,
     }
 
 

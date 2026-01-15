@@ -9,6 +9,7 @@
     },
     "typescript.preferences.importModuleSpecifier": "relative",
     "typescript.updateImportsOnFileMove.enabled": "always",
+    "python.defaultInterpreterPath": "/usr/bin/python3.11",
     "python.testing.pytestEnabled": true,
     "python.testing.pytestArgs": [
         "tests"
