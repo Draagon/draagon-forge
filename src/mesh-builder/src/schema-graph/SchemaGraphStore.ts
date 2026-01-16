@@ -481,6 +481,65 @@ export class SchemaGraphStore {
   }
 
   /**
+   * Get correction examples for a pattern (for evolution training).
+   */
+  async getPatternCorrections(
+    patternId: string,
+    limit = 10
+  ): Promise<Array<{ original: string; corrected: string; context: string }>> {
+    const session = this.getSession();
+    try {
+      const result = await session.run(
+        `
+        MATCH (p:Pattern {id: $patternId})<-[:CORRECTED_FOR]-(c:Correction)
+        RETURN c.original as original, c.corrected as corrected, c.context as context
+        ORDER BY c.created_at DESC
+        LIMIT $limit
+        `,
+        { patternId, limit }
+      );
+
+      return result.records.map((r) => ({
+        original: r.get('original') as string,
+        corrected: r.get('corrected') as string,
+        context: r.get('context') as string,
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * Record a correction for future pattern evolution.
+   */
+  async recordCorrection(
+    patternId: string,
+    original: string,
+    corrected: string,
+    context: string
+  ): Promise<void> {
+    const session = this.getSession();
+    try {
+      await session.run(
+        `
+        MATCH (p:Pattern {id: $patternId})
+        CREATE (c:Correction {
+          id: randomUUID(),
+          original: $original,
+          corrected: $corrected,
+          context: $context,
+          created_at: datetime()
+        })
+        CREATE (c)-[:CORRECTED_FOR]->(p)
+        `,
+        { patternId, original, corrected, context }
+      );
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
    * Export all schemas to YAML-friendly format.
    */
   async exportSchemas(): Promise<Array<{ schema: GraphSchema; patterns: GraphPattern[] }>> {

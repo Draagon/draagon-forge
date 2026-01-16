@@ -318,11 +318,27 @@ export class SchemaEvolver {
 
     let evolved = 0;
     for (const pattern of patternsToEvolve) {
-      // For now, just log - in real implementation, we'd gather correction examples
       console.log(
-        `Pattern ${pattern.name}: ${pattern.trust.accuracy.toFixed(2)} accuracy`
+        `Evolving pattern ${pattern.name}: ${pattern.trust.accuracy.toFixed(2)} accuracy`
       );
-      evolved++;
+
+      // Get correction examples for this pattern from the store
+      const corrections = await this.store.getPatternCorrections(pattern.id, 10);
+
+      if (corrections.length === 0) {
+        console.log(`  No correction examples available for ${pattern.name}, skipping`);
+        continue;
+      }
+
+      // Try to evolve the pattern
+      const evolvedPattern = await this.evolvePattern(pattern.id, corrections);
+
+      if (evolvedPattern) {
+        console.log(`  ✓ Pattern ${pattern.name} evolved to version ${evolvedPattern.version}`);
+        evolved++;
+      } else {
+        console.log(`  ✗ Could not evolve pattern ${pattern.name}`);
+      }
     }
 
     return evolved;
