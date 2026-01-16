@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "base-java",
+  "version": "1.0.0",
+  "language": "java",
+  "additional_languages": ["kotlin"],
+  "description": "Base Java/Kotlin extraction patterns",
+  "detection": {
+    "imports": [],
+    "files": ["*.java", "*.kt"],
+    "patterns": [
+      "^package\\s+",
+      "^import\\s+",
+      "^public\\s+(class|interface|enum|record)",
+      "^(public|private|protected)?\\s*(static)?\\s*(final)?\\s*class\\s+"
+    ],
+    "confidence_boost": 0.2
+  },
+  "extractors": {
+    "imports": {
+      "description": "Java import statements",
+      "patterns": [
+        {
+          "name": "single_import",
+          "regex": "^import\\s+(static\\s+)?([\\w.]+);$",
+          "flags": "gm",
+          "captures": {
+            "is_static": { "group": 1, "transform": "trim" },
+            "module": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "module",
+            "properties": {
+              "module": "module",
+              "is_static": "is_static"
+            }
+          }
+        }
+      ]
+    },
+    "classes": {
+      "description": "Java class declarations",
+      "patterns": [
+        {
+          "name": "class_declaration",
+          "regex": "^(public\\s+)?(abstract\\s+)?(final\\s+)?class\\s+(\\w+)(?:\\s+extends\\s+(\\w+))?(?:\\s+implements\\s+([\\w,\\s]+))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1, "transform": "trim" },
+            "is_abstract": { "group": 2, "transform": "trim" },
+            "is_final": { "group": 3, "transform": "trim" },
+            "name": { "group": 4 },
+            "extends": { "group": 5 },
+            "implements": { "group": 6, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "is_abstract": "is_abstract",
+              "is_final": "is_final",
+              "extends": "extends",
+              "implements": "implements"
+            }
+          }
+        },
+        {
+          "name": "record_declaration",
+          "regex": "^(public\\s+)?record\\s+(\\w+)\\s*\\(([^)]+)\\)",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1, "transform": "trim" },
+            "name": { "group": 2 },
+            "fields": { "group": 3, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "is_record": true,
+              "fields": "fields"
+            }
+          }
+        }
+      ]
+    },
+    "interfaces": {
+      "description": "Java interface declarations",
+      "patterns": [
+        {
+          "name": "interface_declaration",
+          "regex": "^(public\\s+)?interface\\s+(\\w+)(?:\\s+extends\\s+([\\w,\\s]+))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1, "transform": "trim" },
+            "name": { "group": 2 },
+            "extends": { "group": 3, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Interface",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "extends": "extends"
+            }
+          }
+        }
+      ]
+    },
+    "enums": {
+      "description": "Java enum declarations",
+      "patterns": [
+        {
+          "name": "enum_declaration",
+          "regex": "^(public\\s+)?enum\\s+(\\w+)(?:\\s+implements\\s+([\\w,\\s]+))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1, "transform": "trim" },
+            "name": { "group": 2 },
+            "implements": { "group": 3, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "is_enum": true,
+              "implements": "implements"
+            }
+          }
+        }
+      ]
+    },
+    "methods": {
+      "description": "Java method declarations",
+      "patterns": [
+        {
+          "name": "method_declaration",
+          "regex": "^\\s*(public|private|protected)\\s+(static\\s+)?(final\\s+)?(synchronized\\s+)?(?:<[^>]+>\\s+)?([\\w<>\\[\\]?,]+)\\s+(\\w+)\\s*\\(([^)]*)\\)",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1 },
+            "is_static": { "group": 2, "transform": "trim" },
+            "is_final": { "group": 3, "transform": "trim" },
+            "is_synchronized": { "group": 4, "transform": "trim" },
+            "return_type": { "group": 5, "transform": "trim" },
+            "name": { "group": 6 },
+            "parameters": { "group": 7, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Method",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "is_static": "is_static",
+              "is_final": "is_final",
+              "is_synchronized": "is_synchronized",
+              "return_type": "return_type",
+              "parameters": "parameters"
+            }
+          }
+        }
+      ]
+    },
+    "decorators": {
+      "description": "Java annotations",
+      "patterns": [
+        {
+          "name": "annotation",
+          "regex": "^\\s*@(\\w+)(?:\\(([^)]+)\\))?",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "arguments": { "group": 2, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Decorator",
+            "name_from": "name",
+            "properties": {
+              "arguments": "arguments"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "ai_hints": {
+    "tier2_verification": {
+      "prompts": {
+        "class": "Verify this Java class declaration is correctly extracted",
+        "method": "Verify this Java method signature is correctly extracted"
+      }
+    },
+    "tier3_discovery": {
+      "suggestions": [
+        "Look for Spring annotations like @Service, @Repository, @Controller",
+        "Look for JPA entity annotations like @Entity, @Table",
+        "Look for dependency injection patterns",
+        "Look for builder patterns and factory methods"
+      ]
+    }
+  }
+}

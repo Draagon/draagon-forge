@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "base-go",
+  "version": "1.0.0",
+  "language": "go",
+  "description": "Base Go extraction patterns",
+  "detection": {
+    "imports": [],
+    "files": ["*.go"],
+    "patterns": [
+      "^package\\s+",
+      "^import\\s+",
+      "^func\\s+",
+      "^type\\s+\\w+\\s+(struct|interface)"
+    ],
+    "confidence_boost": 0.2
+  },
+  "extractors": {
+    "packages": {
+      "description": "Go package declarations",
+      "patterns": [
+        {
+          "name": "package_decl",
+          "regex": "^package\\s+(\\w+)",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Package",
+            "name_from": "name",
+            "properties": {}
+          }
+        }
+      ]
+    },
+    "imports": {
+      "description": "Go import statements",
+      "patterns": [
+        {
+          "name": "single_import",
+          "regex": "^import\\s+\"([^\"]+)\"",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "style": "single"
+            }
+          }
+        },
+        {
+          "name": "aliased_import",
+          "regex": "^\\s+(\\w+)\\s+\"([^\"]+)\"",
+          "flags": "gm",
+          "captures": {
+            "alias": { "group": 1 },
+            "path": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "path",
+            "properties": {
+              "alias": "alias",
+              "path": "path",
+              "style": "aliased"
+            }
+          }
+        }
+      ]
+    },
+    "structs": {
+      "description": "Go struct definitions",
+      "patterns": [
+        {
+          "name": "struct_def",
+          "regex": "^type\\s+(\\w+)\\s+struct\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "context_lines": 5,
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "kind": "struct"
+            }
+          }
+        }
+      ]
+    },
+    "interfaces": {
+      "description": "Go interface definitions",
+      "patterns": [
+        {
+          "name": "interface_def",
+          "regex": "^type\\s+(\\w+)\\s+interface\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "context_lines": 5,
+          "node_template": {
+            "type": "Interface",
+            "name_from": "name",
+            "properties": {}
+          }
+        }
+      ]
+    },
+    "functions": {
+      "description": "Go function declarations",
+      "patterns": [
+        {
+          "name": "function_decl",
+          "regex": "^func\\s+(\\w+)\\s*\\(([^)]*)\\)(?:\\s*\\(([^)]*)\\))?(?:\\s+(\\w+|\\([^)]+\\)))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "params": { "group": 2 },
+            "return_params": { "group": 3, "default": "" },
+            "return_type": { "group": 4, "default": "" }
+          },
+          "context_lines": 2,
+          "node_template": {
+            "type": "Function",
+            "name_from": "name",
+            "properties": {
+              "parameters": "params",
+              "return_type": "return_type"
+            }
+          }
+        },
+        {
+          "name": "method_decl",
+          "regex": "^func\\s+\\(\\s*(\\w+)\\s+(\\*?\\w+)\\s*\\)\\s+(\\w+)\\s*\\(([^)]*)\\)(?:\\s+(\\w+|\\([^)]+\\)))?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "receiver_name": { "group": 1 },
+            "receiver_type": { "group": 2 },
+            "name": { "group": 3 },
+            "params": { "group": 4 },
+            "return_type": { "group": 5, "default": "" }
+          },
+          "context_lines": 2,
+          "node_template": {
+            "type": "Method",
+            "name_from": "name",
+            "properties": {
+              "receiver": "receiver_type",
+              "parameters": "params",
+              "return_type": "return_type"
+            }
+          }
+        }
+      ]
+    },
+    "type_aliases": {
+      "description": "Go type aliases",
+      "patterns": [
+        {
+          "name": "type_alias",
+          "regex": "^type\\s+(\\w+)\\s+(?!struct|interface)(\\w+(?:\\[\\w+\\])?)",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "underlying": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Interface",
+            "name_from": "name",
+            "properties": {
+              "type_alias": "true",
+              "underlying": "underlying"
+            }
+          }
+        }
+      ]
+    },
+    "constants": {
+      "description": "Go const declarations",
+      "patterns": [
+        {
+          "name": "const_decl",
+          "regex": "^const\\s+(\\w+)(?:\\s+(\\w+))?\\s*=\\s*(.+)$",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "type": { "group": 2, "default": "" },
+            "value": { "group": 3 }
+          },
+          "node_template": {
+            "type": "Variable",
+            "name_from": "name",
+            "properties": {
+              "kind": "const",
+              "type": "type"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "ai_hints": {
+    "common_patterns": [
+      "Go uses explicit receivers for methods (func (r Receiver) Name())",
+      "Interfaces are implicitly implemented - no 'implements' keyword",
+      "Structs define data structures, similar to classes but no inheritance",
+      "Capitalized names are exported, lowercase are package-private"
+    ],
+    "framework_context": "Base Go without any specific framework"
+  }
+}

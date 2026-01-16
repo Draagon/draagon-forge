@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "base-csharp",
+  "version": "1.0.0",
+  "language": "csharp",
+  "description": "Base C# extraction patterns",
+  "detection": {
+    "imports": [],
+    "files": ["*.cs"],
+    "patterns": [
+      "^using\\s+",
+      "^namespace\\s+",
+      "^(public|private|internal)\\s+(class|interface|struct|enum|record)"
+    ],
+    "confidence_boost": 0.2
+  },
+  "extractors": {
+    "imports": {
+      "description": "C# using statements",
+      "patterns": [
+        {
+          "name": "using_directive",
+          "regex": "^using\\s+(?:static\\s+)?([\\w.]+);$",
+          "flags": "gm",
+          "captures": {
+            "module": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "module",
+            "properties": {
+              "module": "module"
+            }
+          }
+        },
+        {
+          "name": "using_alias",
+          "regex": "^using\\s+(\\w+)\\s*=\\s*([\\w.]+);$",
+          "flags": "gm",
+          "captures": {
+            "alias": { "group": 1 },
+            "module": { "group": 2 }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "alias",
+            "properties": {
+              "alias": "alias",
+              "module": "module"
+            }
+          }
+        }
+      ]
+    },
+    "classes": {
+      "description": "C# class declarations",
+      "patterns": [
+        {
+          "name": "class_declaration",
+          "regex": "^\\s*(public|private|internal|protected)?\\s*(abstract|sealed|static|partial)?\\s*(partial)?\\s*class\\s+(\\w+)(?:<[^>]+>)?(?:\\s*:\\s*([\\w,\\s<>]+))?",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1 },
+            "modifier": { "group": 2 },
+            "is_partial": { "group": 3 },
+            "name": { "group": 4 },
+            "base_types": { "group": 5, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "modifier": "modifier",
+              "is_partial": "is_partial",
+              "base_types": "base_types"
+            }
+          }
+        },
+        {
+          "name": "record_declaration",
+          "regex": "^\\s*(public|private|internal|protected)?\\s*(sealed)?\\s*record\\s+(\\w+)(?:<[^>]+>)?(?:\\s*\\(([^)]+)\\))?",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1 },
+            "is_sealed": { "group": 2 },
+            "name": { "group": 3 },
+            "parameters": { "group": 4, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "is_sealed": "is_sealed",
+              "is_record": true,
+              "parameters": "parameters"
+            }
+          }
+        },
+        {
+          "name": "struct_declaration",
+          "regex": "^\\s*(public|private|internal|protected)?\\s*(readonly)?\\s*struct\\s+(\\w+)(?:<[^>]+>)?",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1 },
+            "is_readonly": { "group": 2 },
+            "name": { "group": 3 }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "is_readonly": "is_readonly",
+              "is_struct": true
+            }
+          }
+        }
+      ]
+    },
+    "interfaces": {
+      "description": "C# interface declarations",
+      "patterns": [
+        {
+          "name": "interface_declaration",
+          "regex": "^\\s*(public|private|internal)?\\s*interface\\s+(\\w+)(?:<[^>]+>)?(?:\\s*:\\s*([\\w,\\s<>]+))?",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1 },
+            "name": { "group": 2 },
+            "extends": { "group": 3, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Interface",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "extends": "extends"
+            }
+          }
+        }
+      ]
+    },
+    "enums": {
+      "description": "C# enum declarations",
+      "patterns": [
+        {
+          "name": "enum_declaration",
+          "regex": "^\\s*(public|private|internal)?\\s*enum\\s+(\\w+)(?:\\s*:\\s*(\\w+))?",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1 },
+            "name": { "group": 2 },
+            "underlying_type": { "group": 3 }
+          },
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "is_enum": true,
+              "underlying_type": "underlying_type"
+            }
+          }
+        }
+      ]
+    },
+    "methods": {
+      "description": "C# method declarations",
+      "patterns": [
+        {
+          "name": "method_declaration",
+          "regex": "^\\s*(public|private|protected|internal)?\\s*(static|virtual|override|abstract|sealed|async)?\\s*(async)?\\s*(?:<[^>]+>\\s+)?([\\w<>\\[\\],\\s?]+)\\s+(\\w+)(?:<[^>]+>)?\\s*\\(([^)]*)\\)",
+          "flags": "gm",
+          "captures": {
+            "visibility": { "group": 1 },
+            "modifier": { "group": 2 },
+            "is_async": { "group": 3 },
+            "return_type": { "group": 4, "transform": "trim" },
+            "name": { "group": 5 },
+            "parameters": { "group": 6, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Method",
+            "name_from": "name",
+            "properties": {
+              "visibility": "visibility",
+              "modifier": "modifier",
+              "is_async": "is_async",
+              "return_type": "return_type",
+              "parameters": "parameters"
+            }
+          }
+        }
+      ]
+    },
+    "decorators": {
+      "description": "C# attributes",
+      "patterns": [
+        {
+          "name": "attribute",
+          "regex": "^\\s*\\[(\\w+)(?:\\(([^\\]]+)\\))?\\]",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "arguments": { "group": 2, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Decorator",
+            "name_from": "name",
+            "properties": {
+              "arguments": "arguments"
+            }
+          }
+        }
+      ]
+    },
+    "api_endpoints": {
+      "description": "ASP.NET Core API endpoints",
+      "patterns": [
+        {
+          "name": "http_route",
+          "regex": "\\[(Http(Get|Post|Put|Delete|Patch))(?:\\(\"([^\"]+)\"\\))?\\]",
+          "flags": "gm",
+          "captures": {
+            "method": { "group": 2, "transform": "uppercase" },
+            "route": { "group": 3 }
+          },
+          "node_template": {
+            "type": "ApiEndpoint",
+            "name_from": "route",
+            "properties": {
+              "method": "method",
+              "route": "route"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "ai_hints": {
+    "tier2_verification": {
+      "prompts": {
+        "class": "Verify this C# class declaration is correctly extracted",
+        "method": "Verify this C# method signature is correctly extracted"
+      }
+    },
+    "tier3_discovery": {
+      "suggestions": [
+        "Look for ASP.NET Core attributes like [ApiController], [Route], [Authorize]",
+        "Look for Entity Framework attributes like [Table], [Key], [Required]",
+        "Look for dependency injection patterns",
+        "Look for async/await patterns and Task-based methods"
+      ]
+    }
+  }
+}

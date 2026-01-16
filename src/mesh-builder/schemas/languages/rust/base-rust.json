@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "name": "base-rust",
+  "version": "1.0.0",
+  "language": "rust",
+  "description": "Base Rust extraction patterns",
+  "detection": {
+    "imports": [],
+    "files": ["*.rs"],
+    "patterns": [
+      "^use\\s+",
+      "^mod\\s+",
+      "^pub\\s+(fn|struct|enum|trait|impl)",
+      "^fn\\s+",
+      "^struct\\s+",
+      "^impl\\s+"
+    ],
+    "confidence_boost": 0.2
+  },
+  "extractors": {
+    "modules": {
+      "description": "Rust module declarations",
+      "patterns": [
+        {
+          "name": "mod_decl",
+          "regex": "^(?:pub\\s+)?mod\\s+(\\w+)(?:\\s*\\{|;)",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Package",
+            "name_from": "name",
+            "properties": {
+              "kind": "module"
+            }
+          }
+        }
+      ]
+    },
+    "imports": {
+      "description": "Rust use statements",
+      "patterns": [
+        {
+          "name": "use_simple",
+          "regex": "^(?:pub\\s+)?use\\s+([\\w:]+)(?:::([\\w*]+|\\{[^}]+\\}))?(\\s+as\\s+(\\w+))?;",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 },
+            "items": { "group": 2, "default": "" },
+            "alias": { "group": 4, "default": "" }
+          },
+          "node_template": {
+            "type": "Import",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "items": "items",
+              "alias": "alias"
+            }
+          }
+        }
+      ]
+    },
+    "structs": {
+      "description": "Rust struct definitions",
+      "patterns": [
+        {
+          "name": "struct_def",
+          "regex": "^(?:pub(?:\\([^)]+\\))?\\s+)?struct\\s+(\\w+)(?:<[^>]+>)?(?:\\s*\\([^)]+\\))?(?:\\s*where[^{]+)?\\s*(?:\\{|;)",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "context_lines": 5,
+          "node_template": {
+            "type": "Class",
+            "name_from": "name",
+            "properties": {
+              "kind": "struct"
+            }
+          }
+        }
+      ]
+    },
+    "enums": {
+      "description": "Rust enum definitions",
+      "patterns": [
+        {
+          "name": "enum_def",
+          "regex": "^(?:pub(?:\\([^)]+\\))?\\s+)?enum\\s+(\\w+)(?:<[^>]+>)?(?:\\s*where[^{]+)?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "context_lines": 5,
+          "node_template": {
+            "type": "Enum",
+            "name_from": "name",
+            "properties": {}
+          }
+        }
+      ]
+    },
+    "traits": {
+      "description": "Rust trait definitions",
+      "patterns": [
+        {
+          "name": "trait_def",
+          "regex": "^(?:pub(?:\\([^)]+\\))?\\s+)?(?:unsafe\\s+)?trait\\s+(\\w+)(?:<[^>]+>)?(?:\\s*:\\s*([^{]+))?(?:\\s*where[^{]+)?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "bounds": { "group": 2, "default": "" }
+          },
+          "context_lines": 5,
+          "node_template": {
+            "type": "Interface",
+            "name_from": "name",
+            "properties": {
+              "kind": "trait",
+              "bounds": "bounds"
+            }
+          }
+        }
+      ]
+    },
+    "impls": {
+      "description": "Rust impl blocks",
+      "patterns": [
+        {
+          "name": "impl_block",
+          "regex": "^(?:unsafe\\s+)?impl(?:<[^>]+>)?\\s+(?:(\\w+(?:<[^>]+>)?)\\s+for\\s+)?(\\w+)(?:<[^>]+>)?(?:\\s*where[^{]+)?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "trait_name": { "group": 1, "default": "" },
+            "type_name": { "group": 2 }
+          },
+          "context_lines": 3,
+          "node_template": {
+            "type": "Implementation",
+            "name_from": "type_name",
+            "properties": {
+              "trait": "trait_name",
+              "for_type": "type_name"
+            }
+          }
+        }
+      ]
+    },
+    "functions": {
+      "description": "Rust function declarations",
+      "patterns": [
+        {
+          "name": "fn_decl",
+          "regex": "^(?:pub(?:\\([^)]+\\))?\\s+)?(?:const\\s+)?(?:async\\s+)?(?:unsafe\\s+)?fn\\s+(\\w+)(?:<[^>]+>)?\\s*\\(([^)]*)\\)(?:\\s*->\\s*([^{;]+))?(?:\\s*where[^{]+)?\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "params": { "group": 2 },
+            "return_type": { "group": 3, "default": "()", "transform": "trim" }
+          },
+          "context_lines": 2,
+          "node_template": {
+            "type": "Function",
+            "name_from": "name",
+            "properties": {
+              "parameters": "params",
+              "return_type": "return_type"
+            }
+          }
+        }
+      ]
+    },
+    "macros": {
+      "description": "Rust macro definitions",
+      "patterns": [
+        {
+          "name": "macro_rules",
+          "regex": "^(?:#\\[[^\\]]+\\]\\s*)*macro_rules!\\s+(\\w+)\\s*\\{",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Macro",
+            "name_from": "name",
+            "properties": {
+              "kind": "macro_rules"
+            }
+          }
+        },
+        {
+          "name": "proc_macro",
+          "regex": "^#\\[proc_macro(?:_derive|_attribute)?(?:\\([^)]+\\))?\\]\\s*(?:pub\\s+)?fn\\s+(\\w+)",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Macro",
+            "name_from": "name",
+            "properties": {
+              "kind": "proc_macro"
+            }
+          }
+        }
+      ]
+    },
+    "type_aliases": {
+      "description": "Rust type aliases",
+      "patterns": [
+        {
+          "name": "type_alias",
+          "regex": "^(?:pub(?:\\([^)]+\\))?\\s+)?type\\s+(\\w+)(?:<[^>]+>)?(?:\\s*where[^=]+)?\\s*=\\s*([^;]+);",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "definition": { "group": 2, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Interface",
+            "name_from": "name",
+            "properties": {
+              "type_alias": "true",
+              "definition": "definition"
+            }
+          }
+        }
+      ]
+    },
+    "constants": {
+      "description": "Rust const and static declarations",
+      "patterns": [
+        {
+          "name": "const_decl",
+          "regex": "^(?:pub(?:\\([^)]+\\))?\\s+)?const\\s+(\\w+)\\s*:\\s*([^=]+)\\s*=",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "type": { "group": 2, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Variable",
+            "name_from": "name",
+            "properties": {
+              "kind": "const",
+              "type": "type"
+            }
+          }
+        },
+        {
+          "name": "static_decl",
+          "regex": "^(?:pub(?:\\([^)]+\\))?\\s+)?static\\s+(?:mut\\s+)?(\\w+)\\s*:\\s*([^=]+)\\s*=",
+          "flags": "gm",
+          "captures": {
+            "name": { "group": 1 },
+            "type": { "group": 2, "transform": "trim" }
+          },
+          "node_template": {
+            "type": "Variable",
+            "name_from": "name",
+            "properties": {
+              "kind": "static",
+              "type": "type"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "ai_hints": {
+    "common_patterns": [
+      "Rust uses 'impl' blocks to add methods to types",
+      "Traits are similar to interfaces - define shared behavior",
+      "Visibility uses 'pub' keyword, with optional scope like pub(crate)",
+      "Lifetimes use apostrophe syntax like 'a",
+      "Derive macros like #[derive(Debug)] add automatic implementations"
+    ],
+    "framework_context": "Base Rust without any specific framework"
+  }
+}
