@@ -634,35 +634,85 @@ export class MeshStore {
     }
 
     // Insert edges
+    // Separate resolved edges (both nodes exist) from unresolved ones
+    const nodeIds = new Set(nodes.map((n) => n.id));
+
     for (const edge of edges) {
-      await session.run(
-        `
-        MATCH (from:MeshNode {id: $from_id})
-        MATCH (to:MeshNode {id: $to_id})
-        CREATE (from)-[e:MESH_EDGE {
-          id: $id,
-          type: $type,
-          properties: $properties,
-          branch: $branch,
-          commit_sha: $commit_sha,
-          stored_at: $stored_at,
-          tier: $tier,
-          confidence: $confidence
-        }]->(to)
-        `,
-        {
-          id: edge.id,
-          from_id: edge.from_id,
-          to_id: edge.to_id,
-          type: edge.type,
-          properties: edge.properties ? JSON.stringify(edge.properties) : null,
-          branch,
-          commit_sha: commitSha,
-          stored_at: storedAt,
-          tier: edge.extraction.tier,
-          confidence: edge.extraction.confidence,
-        }
-      );
+      const isResolved =
+        nodeIds.has(edge.from_id) && nodeIds.has(edge.to_id);
+
+      if (isResolved) {
+        // Both nodes exist - create a relationship
+        await session.run(
+          `
+          MATCH (from:MeshNode {id: $from_id})
+          MATCH (to:MeshNode {id: $to_id})
+          CREATE (from)-[e:MESH_EDGE {
+            id: $id,
+            type: $type,
+            properties: $properties,
+            branch: $branch,
+            commit_sha: $commit_sha,
+            stored_at: $stored_at,
+            tier: $tier,
+            confidence: $confidence,
+            project_id: $project_id
+          }]->(to)
+          `,
+          {
+            id: edge.id,
+            from_id: edge.from_id,
+            to_id: edge.to_id,
+            type: edge.type,
+            properties: edge.properties ? JSON.stringify(edge.properties) : null,
+            branch,
+            commit_sha: commitSha,
+            stored_at: storedAt,
+            tier: edge.extraction.tier,
+            confidence: edge.extraction.confidence,
+            project_id: projectId,
+          }
+        );
+      } else {
+        // Unresolved edge - store as property on source node or create placeholder
+        // For CALLS/IMPORTS to unresolved targets, create a reference node and edge
+        await session.run(
+          `
+          MATCH (from:MeshNode {id: $from_id})
+          MERGE (ref:UnresolvedRef {
+            name: $target_name,
+            project_id: $project_id,
+            branch: $branch
+          })
+          ON CREATE SET ref.created_at = $stored_at
+          CREATE (from)-[e:MESH_EDGE {
+            id: $id,
+            type: $type,
+            properties: $properties,
+            branch: $branch,
+            commit_sha: $commit_sha,
+            stored_at: $stored_at,
+            tier: $tier,
+            confidence: $confidence,
+            project_id: $project_id,
+            is_unresolved: true
+          }]->(ref)
+          `,
+          {
+            id: edge.id,
+            from_id: edge.from_id,
+            target_name: edge.to_id, // This is the function/module name
+            type: edge.type,
+            properties: edge.properties ? JSON.stringify(edge.properties) : null,
+            branch,
+            commit_sha: commitSha,
+            stored_at: storedAt,
+            tier: edge.extraction.tier,
+            confidence: edge.extraction.confidence,
+            project_id: projectId,
+          }
+        );
+      }
     }
   }
 
