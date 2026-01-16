@@ -332,6 +332,212 @@ describe('Language Schema Coverage', () => {
     expect(schema.extractors.functions).toBeDefined();
     expect(schema.extractors.impls).toBeDefined();
   });
+
+  test('Java schema should include Spring endpoint extraction', async () => {
+    const javaSchemaPath = path.join(
+      __dirname,
+      '..',
+      '..',
+      'schemas',
+      'languages',
+      'java',
+      'base-java.json'
+    );
+
+    const schemaContent = await fs.readFile(javaSchemaPath, 'utf-8');
+    const schema = JSON.parse(schemaContent);
+
+    // Verify endpoints extractor exists
+    expect(schema.extractors.endpoints).toBeDefined();
+    expect(schema.extractors.endpoints.description).toContain('Spring');
+
+    // Verify patterns cover all HTTP methods
+    const patternNames = schema.extractors.endpoints.patterns.map(
+      (p: { name: string }) => p.name
+    );
+    expect(patternNames).toContain('get_mapping');
+    expect(patternNames).toContain('post_mapping');
+    expect(patternNames).toContain('put_mapping');
+    expect(patternNames).toContain('delete_mapping');
+    expect(patternNames).toContain('patch_mapping');
+
+    // Verify node template produces Endpoint type
+    const getMapping = schema.extractors.endpoints.patterns.find(
+      (p: { name: string }) => p.name === 'get_mapping'
+    );
+    expect(getMapping.node_template.type).toBe('Endpoint');
+    expect(getMapping.node_template.properties.http_method).toBe('GET');
+    expect(getMapping.node_template.properties.framework).toBe('spring');
+  });
+
+  test('TypeScript schema should include Express/NestJS endpoint extraction', async () => {
+    const tsSchemaPath = path.join(
+      __dirname,
+      '..',
+      '..',
+      'schemas',
+      'languages',
+      'typescript',
+      'base-typescript.json'
+    );
+
+    const schemaContent = await fs.readFile(tsSchemaPath, 'utf-8');
+    const schema = JSON.parse(schemaContent);
+
+    // Verify endpoints extractor exists
+    expect(schema.extractors.endpoints).toBeDefined();
+
+    // Verify patterns cover Express and NestJS
+    const patternNames = schema.extractors.endpoints.patterns.map(
+      (p: { name: string }) => p.name
+    );
+    expect(patternNames).toContain('express_get');
+    expect(patternNames).toContain('express_post');
+    expect(patternNames).toContain('nestjs_get');
+    expect(patternNames).toContain('nestjs_post');
+
+    // Verify Express pattern produces Endpoint type with correct framework
+    const expressGet = schema.extractors.endpoints.patterns.find(
+      (p: { name: string }) => p.name === 'express_get'
+    );
+    expect(expressGet.node_template.type).toBe('Endpoint');
+    expect(expressGet.node_template.properties.http_method).toBe('GET');
+    expect(expressGet.node_template.properties.framework).toBe('express');
+
+    // Verify NestJS pattern produces Endpoint type with correct framework
+    const nestjsPost = schema.extractors.endpoints.patterns.find(
+      (p: { name: string }) => p.name === 'nestjs_post'
+    );
+    expect(nestjsPost.node_template.type).toBe('Endpoint');
+    expect(nestjsPost.node_template.properties.http_method).toBe('POST');
+    expect(nestjsPost.node_template.properties.framework).toBe('nestjs');
+  });
+
+  test('should extract Spring endpoints from Java code', async () => {
+    // Create a Java controller file with Spring annotations
+    const javaContent = `
+package com.example.controller;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+
+    @GetMapping("/{id}")
+    public User getUser(@PathVariable Long id) {
+        return userService.findById(id);
+    }
+
+    @PostMapping("/create")
+    public User createUser(@RequestBody User user) {
+        return userService.save(user);
+    }
+
+    @DeleteMapping("/{id}")
+    public void deleteUser(@PathVariable Long id) {
+        userService.delete(id);
+    }
+}
+`;
+
+    const javaFile = path.join(TEST_DIR, 'UserController.java');
+    await fs.writeFile(javaFile, javaContent);
+
+    const extractor = new FileExtractor(
+      {
+        id: 'test-java-project',
+        name: 'test-java-project',
+        path: TEST_DIR,
+      },
+      {
+        enableAI: false,
+      }
+    );
+
+    const result = await extractor.extractProject();
+    const endpoints = result.results
+      .flatMap(r => r.nodes)
+      .filter(n => n.type === 'Endpoint');
+
+    // Should extract at least the GET and POST endpoints
+    expect(endpoints.length).toBeGreaterThanOrEqual(2);
+
+    // Verify endpoint properties
+    const getEndpoint = endpoints.find(e => e.name === '/{id}' || e.properties?.http_method === 'GET');
+    const postEndpoint = endpoints.find(e => e.name === '/create' || e.properties?.http_method === 'POST');
+
+    if (getEndpoint) {
+      expect(getEndpoint.properties?.http_method).toBe('GET');
+      expect(getEndpoint.properties?.framework).toBe('spring');
+    }
+
+    if (postEndpoint) {
+      expect(postEndpoint.properties?.http_method).toBe('POST');
+      expect(postEndpoint.properties?.framework).toBe('spring');
+    }
+  });
+
+  test('should extract Express endpoints from TypeScript code', async () => {
+    // Create an Express router file
+    const tsContent = `
+import { Router } from 'express';
+
+const router = Router();
+
+router.get('/users', (req, res) => {
+  res.json(users);
+});
+
+router.post('/users', (req, res) => {
+  const user = createUser(req.body);
+  res.status(201).json(user);
+});
+
+router.delete('/users/:id', (req, res) => {
+  deleteUser(req.params.id);
+  res.status(204).send();
+});
+
+export default router;
+`;
+
+    const tsFile = path.join(TEST_DIR, 'userRouter.ts');
+    await fs.writeFile(tsFile, tsContent);
+
+    const extractor = new FileExtractor(
+      {
+        id: 'test-ts-project',
+        name: 'test-ts-project',
+        path: TEST_DIR,
+      },
+      {
+        enableAI: false,
+      }
+    );
+
+    const result = await extractor.extractProject();
+    const endpoints = result.results
+      .flatMap(r => r.nodes)
+      .filter(n => n.type === 'Endpoint');
+
+    // Should extract at least GET and POST endpoints
+    expect(endpoints.length).toBeGreaterThanOrEqual(2);
+
+    // Verify endpoint properties
+    const getEndpoint = endpoints.find(e => e.properties?.http_method === 'GET');
+    const postEndpoint = endpoints.find(e => e.properties?.http_method === 'POST');
+
+    if (getEndpoint) {
+      expect(getEndpoint.properties?.path).toBe('/users');
+      expect(getEndpoint.properties?.framework).toBe('express');
+    }
+
+    if (postEndpoint) {
+      expect(postEndpoint.properties?.path).toBe('/users');
+      expect(postEndpoint.properties?.framework).toBe('express');
+    }
+  });
 });
 
 describe('Cross-Project Linking Pipeline (Fatal Flaw #3 Fix)', () => {

@@ -54,7 +54,8 @@ export type MeshNodeType =
   | 'Import'
   | 'Decorator'
   // API layer
-  | 'ApiEndpoint'
+  | 'Endpoint' // REST API endpoints (Spring, Express, NestJS, etc.)
+  | 'ApiEndpoint' // Legacy alias for Endpoint
   | 'ApiParameter'
   | 'ApiResponse'
   // Messaging
