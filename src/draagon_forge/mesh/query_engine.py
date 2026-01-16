@@ -40,7 +40,7 @@ class MeshQueryEngine:
         self,
         uri: str = "bolt://localhost:7687",
         username: str = "neo4j",
-        password: str = "password",
+        password: str = "draagon-ai-2025",
     ):
         """
         Initialize the query engine.

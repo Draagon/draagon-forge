@@ -18,6 +18,14 @@ interface MemoryItem {
     created_at?: string;
 }
 
+type ApiStatus = 'unknown' | 'checking' | 'healthy' | 'unhealthy' | 'error';
+
+interface ApiStatusInfo {
+    status: ApiStatus;
+    message: string;
+    details?: string;
+}
+
 export class MemoryViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'draagon-forge.memoryView';
 
@@ -25,6 +33,7 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
     private _memories: MemoryItem[] = [];
     private _isLoading = false;
     private _lastError: string | null = null;
+    private _apiStatus: ApiStatusInfo = { status: 'unknown', message: 'Checking API status...' };
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -50,6 +59,15 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
                 case 'refresh':
                     await this.refresh();
                     break;
+                case 'checkHealth':
+                    await this._checkApiHealth();
+                    break;
+                case 'retry':
+                    await this._checkApiHealth();
+                    if (this._apiStatus.status === 'healthy') {
+                        await this.refresh();
+                    }
+                    break;
                 case 'search':
                     await this.search(message.query);
                     break;
@@ -65,6 +83,12 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
                 case 'addBelief':
                     await this._showAddBeliefDialog();
                     break;
+                case 'openBeliefGraph':
+                    await vscode.commands.executeCommand('draagon-forge.openBeliefGraph');
+                    break;
+                case 'openCodeMesh':
+                    await vscode.commands.executeCommand('draagon-forge.openCodeMesh');
+                    break;
             }
         });
 
@@ -79,8 +103,75 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /**
+     * Check API health and update status.
+     */
+    private async _checkApiHealth(): Promise<boolean> {
+        this._apiStatus = { status: 'checking', message: 'Checking API...' };
+        this._updateView();
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            const response = await fetch(`${this._apiUrl}/health`, {
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const data = await response.json() as { status?: string };
+                if (data.status === 'healthy') {
+                    this._apiStatus = { status: 'healthy', message: 'API connected' };
+                    this._updateView();
+                    return true;
+                }
+            }
+
+            this._apiStatus = {
+                status: 'unhealthy',
+                message: 'API server not responding correctly',
+                details: `Server returned status ${response.status}`,
+            };
+            this._updateView();
+            return false;
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+
+            // Parse error type for user-friendly message
+            if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to fetch')) {
+                this._apiStatus = {
+                    status: 'error',
+                    message: 'Cannot connect to API server',
+                    details: 'The Forge API server is not running.',
+                };
+            } else if (errorMessage.includes('aborted') || errorMessage.includes('timeout')) {
+                this._apiStatus = {
+                    status: 'error',
+                    message: 'API server timed out',
+                    details: 'Server may be starting up or overloaded.',
+                };
+            } else {
+                this._apiStatus = {
+                    status: 'error',
+                    message: 'API connection error',
+                    details: errorMessage,
+                };
+            }
+            this._updateView();
+            return false;
+        }
+    }
+
     public async refresh(): Promise<void> {
         if (this._isLoading) return;
+
+        // Check API health first
+        const healthy = await this._checkApiHealth();
+        if (!healthy) {
+            this._memories = [];
+            return;
+        }
 
         this._isLoading = true;
         this._lastError = null;
@@ -88,7 +179,15 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
 
         try {
             const response = await fetch(`${this._apiUrl}/beliefs/all`);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                // Parse specific HTTP errors
+                if (response.status === 500) {
+                    throw new Error('Server error - memory backend may not be initialized');
+                } else if (response.status === 503) {
+                    throw new Error('Service temporarily unavailable');
+                }
+                throw new Error(`HTTP ${response.status}`);
+            }
 
             const data = await response.json() as { beliefs?: Record<string, unknown>[] };
             this._memories = (data.beliefs || []).map((r: Record<string, unknown>, i: number) => ({
@@ -102,6 +201,7 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
                 source: r.source as string | undefined,
                 created_at: r.created_at as string | undefined,
             }));
+            this._apiStatus = { status: 'healthy', message: 'API connected' };
         } catch (e) {
             this._lastError = e instanceof Error ? e.message : String(e);
             this._memories = [];
@@ -235,6 +335,8 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
                 memories: this._memories,
                 isLoading: this._isLoading,
                 error: this._lastError,
+                apiStatus: this._apiStatus,
+                apiUrl: this._apiUrl,
             });
         }
     }
@@ -372,6 +474,150 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
             color: var(--vscode-descriptionForeground);
         }
         .error { color: var(--vscode-errorForeground); }
+
+        /* API Status Styles */
+        .api-status {
+            padding: 16px;
+            text-align: center;
+        }
+        .api-status-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+        .api-status-icon.error { color: var(--vscode-errorForeground); }
+        .api-status-icon.checking { color: var(--vscode-textLink-foreground); }
+        .api-status-title {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .api-status-message {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 12px;
+        }
+        .retry-btn {
+            margin-top: 12px;
+            padding: 6px 14px;
+            font-size: 11px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .retry-btn:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+        .api-url {
+            font-size: 9px;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 8px;
+            opacity: 0.7;
+        }
+
+        /* Launcher buttons section */
+        .launchers {
+            display: flex;
+            gap: 4px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--vscode-widget-border);
+            flex-shrink: 0;
+        }
+        .launcher-btn {
+            flex: 1;
+            padding: 6px 8px;
+            font-size: 11px;
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .launcher-btn:hover:not(:disabled) {
+            background: var(--vscode-button-secondaryHoverBackground);
+        }
+        .launcher-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .launcher-btn .icon {
+            font-size: 12px;
+        }
+
+        /* Search and add section */
+        .controls {
+            display: flex;
+            gap: 4px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--vscode-widget-border);
+            flex-shrink: 0;
+        }
+        .controls.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .search-input {
+            flex: 1;
+            padding: 4px 8px;
+            font-size: 11px;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 3px;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+        }
+        .add-btn {
+            padding: 4px 8px;
+            font-size: 11px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .add-btn:hover:not(:disabled) {
+            background: var(--vscode-button-hoverBackground);
+        }
+        .add-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* API status indicator in header */
+        .api-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            font-size: 10px;
+            background: var(--vscode-inputValidation-errorBackground);
+            border-bottom: 1px solid var(--vscode-inputValidation-errorBorder);
+        }
+        .api-indicator.healthy {
+            display: none;
+        }
+        .api-indicator .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--vscode-errorForeground);
+        }
+        .api-indicator.checking .dot {
+            background: var(--vscode-textLink-foreground);
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
     </style>
 </head>
 <body>
@@ -380,10 +626,15 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
         const vscode = acquireVsCodeApi();
         const root = document.getElementById('root');
         let memories = [];
+        let apiStatus = { status: 'unknown', message: 'Checking...' };
+        let apiUrl = '';
+        let searchQuery = '';
 
         window.addEventListener('message', e => {
             if (e.data.type === 'update') {
                 memories = e.data.memories || [];
+                apiStatus = e.data.apiStatus || { status: 'unknown', message: 'Unknown' };
+                apiUrl = e.data.apiUrl || '';
                 render(e.data.isLoading, e.data.error);
             }
         });
@@ -393,13 +644,113 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
             if (row) row.classList.toggle('open');
         }
 
+        function isApiHealthy() {
+            return apiStatus.status === 'healthy';
+        }
+
+        function renderLaunchers() {
+            const disabled = !isApiHealthy();
+            const disabledAttr = disabled ? ' disabled' : '';
+
+            let html = '<div class="launchers">';
+            html += '<button class="launcher-btn" data-action="openBeliefGraph"' + disabledAttr + '>';
+            html += '<span class="icon">◉</span> Belief Graph';
+            html += '</button>';
+            html += '<button class="launcher-btn" data-action="openCodeMesh"' + disabledAttr + '>';
+            html += '<span class="icon">⬡</span> Code Mesh';
+            html += '</button>';
+            html += '</div>';
+            return html;
+        }
+
+        function renderApiIndicator() {
+            if (isApiHealthy()) {
+                return '';
+            }
+            const isChecking = apiStatus.status === 'checking';
+            const cls = isChecking ? 'checking' : '';
+            const msg = isChecking ? 'Connecting...' : apiStatus.message;
+
+            let html = '<div class="api-indicator ' + cls + '">';
+            html += '<span class="dot"></span>';
+            html += '<span>' + escapeHtml(msg) + '</span>';
+            if (!isChecking) {
+                html += ' <a href="#" data-action="retry" style="margin-left:auto;color:var(--vscode-textLink-foreground);">Retry</a>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function renderControls() {
+            const disabled = !isApiHealthy();
+            const disabledCls = disabled ? ' disabled' : '';
+            const disabledAttr = disabled ? ' disabled' : '';
+
+            let html = '<div class="controls' + disabledCls + '">';
+            html += '<input type="text" class="search-input" placeholder="Search beliefs..." value="' + escapeHtml(searchQuery) + '"' + disabledAttr + '>';
+            html += '<button class="add-btn" data-action="addBelief"' + disabledAttr + '>+ Add</button>';
+            html += '</div>';
+            return html;
+        }
+
+        function renderOfflineMessage() {
+            let html = '<div class="api-status">';
+            html += '<div class="api-status-icon error">⚠</div>';
+            html += '<div class="api-status-title">' + escapeHtml(apiStatus.message) + '</div>';
+
+            if (apiStatus.details) {
+                html += '<div class="api-status-message">' + escapeHtml(apiStatus.details) + '</div>';
+            }
+
+            html += '<button class="retry-btn" data-action="retry">Retry Connection</button>';
+
+            if (apiUrl) {
+                html += '<div class="api-url">' + escapeHtml(apiUrl) + '</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
         function render(isLoading, error) {
-            if (isLoading) {
-                root.innerHTML = '<div class="loading">Loading...</div>';
+            let html = '';
+
+            // Always show launchers at top (but disabled if API down)
+            html += renderLaunchers();
+
+            // Show API indicator if not healthy
+            html += renderApiIndicator();
+
+            // Show controls (disabled if API down)
+            html += renderControls();
+
+            // Content area
+            if (apiStatus.status === 'checking') {
+                html += '<div class="loading">Connecting to API...</div>';
+                root.innerHTML = html;
                 return;
             }
+
+            if (apiStatus.status === 'error' || apiStatus.status === 'unhealthy') {
+                html += renderOfflineMessage();
+                root.innerHTML = html;
+                return;
+            }
+
+            if (isLoading) {
+                html += '<div class="loading">Loading beliefs...</div>';
+                root.innerHTML = html;
+                return;
+            }
+
             if (error) {
-                root.innerHTML = '<div class="error">' + error + '</div>';
+                html += '<div class="api-status">';
+                html += '<div class="api-status-icon error">⚠</div>';
+                html += '<div class="api-status-title">Error Loading Beliefs</div>';
+                html += '<div class="api-status-message">' + escapeHtml(error) + '</div>';
+                html += '<button class="retry-btn" data-action="retry">Retry</button>';
+                html += '</div>';
+                root.innerHTML = html;
                 return;
             }
 
@@ -411,7 +762,7 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
             const medPct = total > 0 ? (med / total * 100) : 0;
             const lowPct = total > 0 ? (low / total * 100) : 0;
 
-            let html = '<div class="summary-row">';
+            html += '<div class="summary-row">';
             html += '<span class="count">' + total + '</span>';
             html += '<span class="label">Beliefs</span>';
             html += '<div class="conviction-bar">';
@@ -460,16 +811,47 @@ export class MemoryViewProvider implements vscode.WebviewViewProvider {
         root.addEventListener('click', function(e) {
             const target = e.target.closest('[data-action]');
             if (!target) return;
+            // Don't handle disabled buttons
+            if (target.disabled || target.closest('.disabled')) return;
             e.stopPropagation();
+            e.preventDefault();
             const action = target.dataset.action;
             if (action === 'toggleBelief') {
                 toggleBelief(parseInt(target.dataset.idx));
+            } else if (action === 'retry') {
+                vscode.postMessage({ command: 'retry' });
+            } else if (action === 'openBeliefGraph') {
+                vscode.postMessage({ command: 'openBeliefGraph' });
+            } else if (action === 'openCodeMesh') {
+                vscode.postMessage({ command: 'openCodeMesh' });
+            } else if (action === 'addBelief') {
+                vscode.postMessage({ command: 'addBelief' });
             } else if (action === 'reinforce') {
                 vscode.postMessage({ command: 'reinforce', id: target.dataset.id });
             } else if (action === 'weaken') {
                 vscode.postMessage({ command: 'weaken', id: target.dataset.id });
             } else if (action === 'deleteBelief') {
                 vscode.postMessage({ command: 'delete', id: target.dataset.id });
+            }
+        });
+
+        // Search input handler
+        root.addEventListener('input', function(e) {
+            if (e.target.classList.contains('search-input')) {
+                searchQuery = e.target.value;
+                // Debounce search
+                clearTimeout(window.searchTimeout);
+                window.searchTimeout = setTimeout(function() {
+                    vscode.postMessage({ command: 'search', query: searchQuery });
+                }, 300);
+            }
+        });
+
+        // Enter key for search
+        root.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && e.target.classList.contains('search-input')) {
+                clearTimeout(window.searchTimeout);
+                vscode.postMessage({ command: 'search', query: e.target.value });
             }
         });
 

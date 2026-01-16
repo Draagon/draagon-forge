@@ -385,6 +385,66 @@ export class ForgeAPIClient implements vscode.Disposable {
     }
 
     // =========================================================================
+    // Code Mesh API
+    // =========================================================================
+
+    /**
+     * Project info from the mesh store
+     */
+    async getMeshProjects(query?: string): Promise<Array<{
+        project_id: string;
+        branches: string[];
+        last_extraction: string;
+        total_nodes: number;
+    }>> {
+        const params = new URLSearchParams();
+        if (query) params.set('q', query);
+
+        const queryString = params.toString();
+        const response = await this.fetch<{ projects: Array<{
+            project_id: string;
+            branches: string[];
+            last_extraction: string;
+            total_nodes: number;
+        }> }>(`/mesh/projects${queryString ? `?${queryString}` : ''}`);
+        return response.projects;
+    }
+
+    /**
+     * Get mesh data for a specific project.
+     */
+    async getMeshData(projectId: string, branch?: string): Promise<{
+        project_id: string;
+        branch: string;
+        results: Array<{
+            file: string;
+            nodes: Array<{
+                id: string;
+                type: string;
+                name: string;
+                source: { file: string; line_start: number; line_end: number };
+                properties: Record<string, unknown>;
+            }>;
+            edges: Array<{
+                type: string;
+                from_id: string;
+                to_id: string;
+            }>;
+        }>;
+        statistics: {
+            total_nodes: number;
+            total_edges: number;
+            files: number;
+        };
+    }> {
+        const params = new URLSearchParams();
+        if (branch) params.set('branch', branch);
+
+        const queryString = params.toString();
+        return this.fetch(`/mesh/projects/${encodeURIComponent(projectId)}${queryString ? `?${queryString}` : ''}`);
+    }
+
+    // =========================================================================
     // Code Review API
     // =========================================================================
 

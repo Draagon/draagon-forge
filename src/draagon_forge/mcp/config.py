@@ -30,7 +30,7 @@ class MCPConfig:
     # Neo4j configuration (shared with draagon-ai)
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "neo4j"
+    neo4j_password: str = "draagon-ai-2025"
     neo4j_database: str = "neo4j"
 
     # Qdrant configuration (shared with draagon-ai)
@@ -85,7 +85,7 @@ class MCPConfig:
             storage_backend=os.getenv("DRAAGON_STORAGE_BACKEND", "draagon-ai"),
             neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
             neo4j_user=os.getenv("NEO4J_USER", "neo4j"),
-            neo4j_password=os.getenv("NEO4J_PASSWORD", "neo4j"),
+            neo4j_password=os.getenv("NEO4J_PASSWORD", "draagon-ai-2025"),
             neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
             qdrant_url=os.getenv("QDRANT_URL", "http://localhost:6333"),
             qdrant_collection=os.getenv("QDRANT_COLLECTION", "draagon_forge_beliefs"),

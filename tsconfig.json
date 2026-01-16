@@ -18,7 +18,8 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "strictNullChecks": true,
-        "strictPropertyInitialization": true
+        "strictPropertyInitialization": true,
+        "types": ["node"]
     },
     "include": [
         "src/**/*.ts"
@@ -26,6 +27,7 @@
     "exclude": [
         "node_modules",
         "dist",
-        ".vscode-test"
+        ".vscode-test",
+        "src/mesh-builder"
     ]
 }

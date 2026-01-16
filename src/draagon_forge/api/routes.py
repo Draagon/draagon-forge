@@ -534,3 +534,223 @@ async def get_entity_context(entity_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=result.get("message", "Entity not found"))
 
     return result
+
+
+# =============================================================================
+# CODE MESH ENDPOINTS
+# =============================================================================
+
+# Global mesh query engine (lazy-initialized)
+_mesh_query_engine = None
+
+
+async def get_mesh_query_engine():
+    """Get or create the mesh query engine."""
+    global _mesh_query_engine
+
+    if _mesh_query_engine is None:
+        from draagon_forge.mcp.config import config
+        from draagon_forge.mesh.query_engine import MeshQueryEngine
+
+        _mesh_query_engine = MeshQueryEngine(
+            uri=config.neo4j_uri,
+            username=config.neo4j_user,
+            password=config.neo4j_password,
+        )
+        await _mesh_query_engine.connect()
+        logger.info("Mesh query engine initialized")
+
+    return _mesh_query_engine
+
+
+@router.get("/mesh/projects")
+async def get_mesh_projects(q: str | None = None) -> dict[str, Any]:
+    """Get all projects in the mesh store.
+
+    Args:
+        q: Optional search query to filter projects by name
+
+    Returns:
+        List of projects with branches and statistics
+    """
+    try:
+        engine = await get_mesh_query_engine()
+
+        if q:
+            # Search projects by name
+            result = await engine.execute(
+                """
+                MATCH (n:MeshNode)
+                WHERE toLower(n.project_id) CONTAINS toLower($query)
+                WITH n.project_id AS project_id,
+                     collect(DISTINCT n.branch) AS branches,
+                     max(n.stored_at) AS last_extraction,
+                     count(n) AS total_nodes
+                RETURN project_id, branches, last_extraction, total_nodes
+                ORDER BY last_extraction DESC
+                """,
+                {"query": q},
+            )
+        else:
+            # Get all projects
+            result = await engine.execute(
+                """
+                MATCH (n:MeshNode)
+                WITH n.project_id AS project_id,
+                     collect(DISTINCT n.branch) AS branches,
+                     max(n.stored_at) AS last_extraction,
+                     count(n) AS total_nodes
+                RETURN project_id, branches, last_extraction, total_nodes
+                ORDER BY last_extraction DESC
+                """
+            )
+
+        projects = []
+        for record in result.records:
+            projects.append({
+                "project_id": record.get("project_id"),
+                "branches": record.get("branches", []),
+                "last_extraction": record.get("last_extraction"),
+                "total_nodes": record.get("total_nodes", 0),
+            })
+
+        return {"projects": projects}
+
+    except Exception as e:
+        logger.error(f"Failed to get mesh projects: {e}")
+        return {"projects": [], "error": str(e)}
+
+
+@router.get("/mesh/projects/{project_id}")
+async def get_mesh_project_data(
+    project_id: str,
+    branch: str | None = None,
+) -> dict[str, Any]:
+    """Get mesh data for a specific project.
+
+    Args:
+        project_id: Project identifier
+        branch: Optional branch filter (uses first branch if not specified)
+
+    Returns:
+        Project mesh data with nodes and edges
+    """
+    try:
+        engine = await get_mesh_query_engine()
+
+        # Get available branches for this project
+        branches_result = await engine.execute(
+            """
+            MATCH (n:MeshNode {project_id: $project_id})
+            RETURN DISTINCT n.branch AS branch
+            ORDER BY branch
+            """,
+            {"project_id": project_id},
+        )
+
+        available_branches = [r.get("branch") for r in branches_result.records if r.get("branch")]
+
+        if not available_branches:
+            raise HTTPException(status_code=404, detail=f"Project not found: {project_id}")
+
+        # Use specified branch or default to first available
+        target_branch = branch if branch in available_branches else available_branches[0]
+
+        # Get nodes for this project/branch
+        nodes_result = await engine.execute(
+            """
+            MATCH (n:MeshNode {project_id: $project_id, branch: $branch})
+            RETURN n
+            ORDER BY n.file_path, n.source_line_start
+            """,
+            {"project_id": project_id, "branch": target_branch},
+        )
+
+        # Get edges for this project/branch
+        edges_result = await engine.execute(
+            """
+            MATCH (from:MeshNode {project_id: $project_id, branch: $branch})-[e:MESH_EDGE]->(to:MeshNode)
+            RETURN e, from.id AS from_id, to.id AS to_id
+            """,
+            {"project_id": project_id, "branch": target_branch},
+        )
+
+        # Group nodes by file
+        files_map: dict[str, dict] = {}
+        for record in nodes_result.records:
+            node_data = record.get("n")
+            if not node_data:
+                continue
+
+            # Extract properties from node
+            props = dict(node_data) if hasattr(node_data, "items") else node_data
+            file_path = props.get("file_path", "unknown")
+
+            if file_path not in files_map:
+                files_map[file_path] = {"file": file_path, "nodes": [], "edges": []}
+
+            # Parse properties JSON if stored as string
+            node_props = props.get("properties", {})
+            if isinstance(node_props, str):
+                try:
+                    import json
+                    node_props = json.loads(node_props)
+                except Exception:
+                    node_props = {}
+
+            files_map[file_path]["nodes"].append({
+                "id": props.get("id"),
+                "type": props.get("type"),
+                "name": props.get("name"),
+                "source": {
+                    "file": file_path,
+                    "line_start": props.get("source_line_start", 0),
+                    "line_end": props.get("source_line_end", 0),
+                },
+                "properties": node_props,
+            })
+
+        # Add edges to file results
+        node_to_file: dict[str, str] = {}
+        for file_path, file_data in files_map.items():
+            for node in file_data["nodes"]:
+                node_to_file[node["id"]] = file_path
+
+        for record in edges_result.records:
+            edge_data = record.get("e")
+            from_id = record.get("from_id")
+            to_id = record.get("to_id")
+
+            if not edge_data:
+                continue
+
+            props = dict(edge_data) if hasattr(edge_data, "items") else edge_data
+            file_path = node_to_file.get(from_id)
+
+            if file_path and file_path in files_map:
+                files_map[file_path]["edges"].append({
+                    "type": props.get("type"),
+                    "from_id": from_id,
+                    "to_id": to_id,
+                })
+
+        # Compute statistics
+        total_nodes = sum(len(f["nodes"]) for f in files_map.values())
+        total_edges = sum(len(f["edges"]) for f in files_map.values())
+
+        return {
+            "project_id": project_id,
+            "branch": target_branch,
+            "results": list(files_map.values()),
+            "statistics": {
+                "total_nodes": total_nodes,
+                "total_edges": total_edges,
+                "files": len(files_map),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get mesh project data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

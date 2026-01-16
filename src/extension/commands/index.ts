@@ -16,6 +16,7 @@ export interface IPanelManager {
     openBeliefGraphPanel(): void;
     openWatchlistPanel(): void;
     openAuditPanel(): void;
+    openCodeMeshPanel(): void;
 }
 
 /**
@@ -151,6 +152,11 @@ export function registerCommands(
         // Open audit panel
         vscode.commands.registerCommand('draagon-forge.openAudit', () => {
             panelManager.openAuditPanel();
+        }),
+
+        // Open code mesh diagrams panel
+        vscode.commands.registerCommand('draagon-forge.openCodeMesh', () => {
+            panelManager.openCodeMeshPanel();
         }),
 
         // Report outcome

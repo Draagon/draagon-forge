@@ -8,8 +8,8 @@
     "mesh-builder": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc -w",
+    "build": "tsc -p tsconfig.build.json",
+    "watch": "tsc -w -p tsconfig.build.json",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/",

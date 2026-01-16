@@ -127,6 +127,12 @@
                 "icon": "$(type-hierarchy)"
             },
             {
+                "command": "draagon-forge.openCodeMesh",
+                "title": "Draagon Forge: Open Code Mesh Diagrams",
+                "category": "Draagon Forge",
+                "icon": "$(graph)"
+            },
+            {
                 "command": "draagon-forge.refreshAccount",
                 "title": "Draagon Forge: Refresh Account",
                 "category": "Draagon Forge",
@@ -245,6 +251,11 @@
                 "command": "draagon-forge.openBeliefGraph",
                 "key": "ctrl+shift+g",
                 "mac": "cmd+shift+g"
+            },
+            {
+                "command": "draagon-forge.openCodeMesh",
+                "key": "ctrl+shift+m",
+                "mac": "cmd+shift+m"
             },
             {
                 "command": "draagon-forge.reviewChanges",

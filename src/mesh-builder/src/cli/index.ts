@@ -24,6 +24,7 @@ import {
 import { SchemaStore, SchemaExport } from '../schema-graph/SchemaStore';
 import { GitTracker, ExtractionStateStore } from '../git/GitTracker';
 import { MeshStore } from '../store/MeshStore';
+import { MermaidGenerator, DiagramType } from '../docs/MermaidGenerator';
 
 const program = new Command();
 
@@ -1075,6 +1076,146 @@ program
       }
     } catch (error) {
       console.error('Cross-project linking failed:', error);
+      process.exit(1);
+    }
+  });
+
+// Diagram command - generate Mermaid diagrams from extracted mesh
+program
+  .command('diagram')
+  .description('Generate Mermaid diagrams from extracted mesh')
+  .argument('<mesh-file>', 'Path to extracted mesh JSON file')
+  .option('-t, --type <type>', 'Diagram type: class, flowchart, sequence, er, callGraph, moduleDeps, all', 'all')
+  .option('-o, --output <file>', 'Output file (default: stdout)')
+  .option('--direction <dir>', 'Diagram direction: TB, BT, LR, RL', 'TB')
+  .option('--max-nodes <n>', 'Maximum nodes to include', '30')
+  .option('--theme <theme>', 'Mermaid theme: default, dark, forest, neutral', 'default')
+  .option('--file-pattern <pattern>', 'Filter by file pattern')
+  .option('--root-function <name>', 'Root function for call graph (shows subgraph)')
+  .option('--wrap', 'Wrap in markdown code block', false)
+  .action(async (meshFile: string, options) => {
+    try {
+      // Load mesh
+      const meshContent = await fs.readFile(meshFile, 'utf-8');
+      const mesh = JSON.parse(meshContent);
+
+      // Create generator
+      const generator = new MermaidGenerator(mesh, {
+        direction: options.direction as 'TB' | 'BT' | 'LR' | 'RL',
+        maxNodes: parseInt(options.maxNodes, 10),
+        includeProperties: true,
+        theme: options.theme !== 'default' ? options.theme : undefined,
+      });
+
+      const filter = options.filePattern ? { filePattern: options.filePattern } : undefined;
+      let output = '';
+
+      if (options.type === 'all') {
+        // Generate all diagram types
+        const diagrams: Record<string, string> = {};
+
+        diagrams['class'] = generator.generateClassDiagram(filter);
+        diagrams['flowchart'] = generator.generateFlowchart(filter);
+        diagrams['callGraph'] = generator.generateCallGraph({
+          ...filter,
+          rootFunction: options.rootFunction,
+        });
+        diagrams['moduleDeps'] = generator.generateModuleDependencies(filter);
+        diagrams['sequence'] = generator.generateSequenceDiagram();
+        diagrams['er'] = generator.generateERDiagram(filter);
+
+        // Apply theme
+        for (const key of Object.keys(diagrams)) {
+          const diagram = diagrams[key];
+          if (diagram) {
+            diagrams[key] = generator.wrapWithTheme(diagram);
+          }
+        }
+
+        // Output as markdown sections
+        const sections: string[] = [];
+        sections.push('# Code Mesh Diagrams\n');
+
+        sections.push('## Class Diagram\n');
+        sections.push('```mermaid');
+        sections.push(diagrams['class']);
+        sections.push('```\n');
+
+        sections.push('## Call Graph\n');
+        sections.push('```mermaid');
+        sections.push(diagrams['callGraph']);
+        sections.push('```\n');
+
+        sections.push('## Dependency Flowchart\n');
+        sections.push('```mermaid');
+        sections.push(diagrams['flowchart']);
+        sections.push('```\n');
+
+        sections.push('## Module Dependencies\n');
+        sections.push('```mermaid');
+        sections.push(diagrams['moduleDeps']);
+        sections.push('```\n');
+
+        sections.push('## API Sequence Diagram\n');
+        sections.push('```mermaid');
+        sections.push(diagrams['sequence']);
+        sections.push('```\n');
+
+        sections.push('## ER Diagram\n');
+        sections.push('```mermaid');
+        sections.push(diagrams['er']);
+        sections.push('```\n');
+
+        output = sections.join('\n');
+      } else {
+        // Generate single diagram type
+        let diagram: string;
+
+        switch (options.type) {
+          case 'class':
+            diagram = generator.generateClassDiagram(filter);
+            break;
+          case 'flowchart':
+            diagram = generator.generateFlowchart(filter);
+            break;
+          case 'sequence':
+            diagram = generator.generateSequenceDiagram(options.filePattern);
+            break;
+          case 'er':
+            diagram = generator.generateERDiagram(filter);
+            break;
+          case 'callGraph':
+            diagram = generator.generateCallGraph({
+              ...filter,
+              rootFunction: options.rootFunction,
+            });
+            break;
+          case 'moduleDeps':
+            diagram = generator.generateModuleDependencies(filter);
+            break;
+          default:
+            console.error(`Unknown diagram type: ${options.type}`);
+            process.exit(1);
+        }
+
+        diagram = generator.wrapWithTheme(diagram);
+
+        if (options.wrap) {
+          output = '```mermaid\n' + diagram + '\n```';
+        } else {
+          output = diagram;
+        }
+      }
+
+      // Write output
+      if (options.output) {
+        await fs.writeFile(options.output, output);
+        console.error(`Diagram written to: ${options.output}`);
+      } else {
+        console.log(output);
+      }
+    } catch (error) {
+      console.error('Diagram generation failed:', error);
       process.exit(1);
     }
   });

@@ -8,7 +8,7 @@
  * - ER diagrams (for database models)
  */
 
-import { DocQueryBuilder, ClassDocData, DependencyDocData } from './DocQueryBuilder';
+import { DocQueryBuilder, ClassDocData, DependencyDocData, FunctionDocData } from './DocQueryBuilder';
 import { ProjectExtractionResult, MeshNode, MeshEdge } from '../types';
 
 export type DiagramType = 'class' | 'flowchart' | 'sequence' | 'er';
@@ -328,14 +328,210 @@ export class MermaidGenerator {
   }
 
   /**
+   * Generate a call graph showing function calls.
+   */
+  generateCallGraph(filter?: { filePattern?: string; rootFunction?: string }): string {
+    const functions = this.queryBuilder.getFunctions(filter);
+    const lines: string[] = [];
+
+    lines.push(`flowchart ${this.config.direction}`);
+
+    // Build call relationships
+    const functionMap = new Map<string, FunctionDocData>();
+    for (const fn of functions) {
+      functionMap.set(fn.name, fn);
+    }
+
+    // Collect all nodes and edges
+    const nodes = new Set<string>();
+    const edges: Array<{ from: string; to: string }> = [];
+
+    // If root function specified, only include that subgraph
+    if (filter?.rootFunction) {
+      const visited = new Set<string>();
+      const queue = [filter.rootFunction];
+
+      while (queue.length > 0 && nodes.size < this.config.maxNodes) {
+        const current = queue.shift()!;
+        if (visited.has(current)) continue;
+        visited.add(current);
+
+        const fn = functionMap.get(current);
+        if (!fn) continue;
+
+        nodes.add(current);
+
+        // Add callees
+        for (const callee of fn.callees) {
+          if (functionMap.has(callee)) {
+            edges.push({ from: current, to: callee });
+            if (!visited.has(callee)) {
+              queue.push(callee);
+            }
+          }
+        }
+
+        // Add callers
+        for (const caller of fn.callers) {
+          if (functionMap.has(caller)) {
+            edges.push({ from: caller, to: current });
+            if (!visited.has(caller)) {
+              queue.push(caller);
+            }
+          }
+        }
+      }
+    } else {
+      // Include all functions with call relationships
+      for (const fn of functions.slice(0, this.config.maxNodes)) {
+        if (fn.callers.length > 0 || fn.callees.length > 0) {
+          nodes.add(fn.name);
+          for (const callee of fn.callees) {
+            if (functionMap.has(callee)) {
+              nodes.add(callee);
+              edges.push({ from: fn.name, to: callee });
+            }
+          }
+        }
+      }
+    }
+
+    // Generate node definitions with styling
+    for (const nodeName of nodes) {
+      const fn = functionMap.get(nodeName);
+      const id = this.sanitizeId(nodeName);
+      if (fn) {
+        // Show function signature
+        const params = fn.parameters.slice(0, 3).join(', ');
+        const truncatedParams = params.length > 20 ? params.substring(0, 17) + '...' : params;
+        lines.push(`    ${id}["${nodeName}(${truncatedParams})"]`);
+      } else {
+        lines.push(`    ${id}[${nodeName}]`);
+      }
+    }
+
+    // Generate edges
+    const edgeSet = new Set<string>();
+    for (const edge of edges) {
+      const fromId = this.sanitizeId(edge.from);
+      const toId = this.sanitizeId(edge.to);
+      const edgeKey = `${fromId}-${toId}`;
+
+      if (!edgeSet.has(edgeKey) && nodes.has(edge.from) && nodes.has(edge.to)) {
+        lines.push(`    ${fromId} --> ${toId}`);
+        edgeSet.add(edgeKey);
+      }
+    }
+
+    // Style entry points (functions with no callers)
+    const entryPoints: string[] = [];
+    for (const nodeName of nodes) {
+      const fn = functionMap.get(nodeName);
+      if (fn && fn.callers.length === 0 && fn.callees.length > 0) {
+        entryPoints.push(this.sanitizeId(nodeName));
+      }
+    }
+    if (entryPoints.length > 0) {
+      lines.push(`    style ${entryPoints.join(',')} fill:#90EE90`);
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Generate a module/file dependency graph.
+   */
+  generateModuleDependencies(filter?: { filePattern?: string }): string {
+    const deps = this.queryBuilder.getDependencies(filter);
+    const lines: string[] = [];
+
+    lines.push(`flowchart ${this.config.direction}`);
+
+    // Filter to only IMPORTS relationships and group by file
+    const importDeps = deps.filter(d => d.type === 'IMPORTS');
+    const allNodes = this.getAllNodes();
+
+    // Build file-level dependencies
+    const fileImports = new Map<string, Set<string>>();
+
+    for (const node of allNodes) {
+      if (node.type === 'Import') {
+        const sourceFile = this.getShortFileName(node.source.file);
+        const importedModule = node.properties['module'] as string || node.name;
+
+        if (!fileImports.has(sourceFile)) {
+          fileImports.set(sourceFile, new Set());
+        }
+        fileImports.get(sourceFile)!.add(importedModule);
+      }
+    }
+
+    // Generate subgraphs by directory
+    const filesByDir = new Map<string, string[]>();
+    for (const [file] of fileImports) {
+      const parts = file.split('/');
+      const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
+      if (!filesByDir.has(dir)) {
+        filesByDir.set(dir, []);
+      }
+      filesByDir.get(dir)!.push(file);
+    }
+
+    // Generate nodes and subgraphs
+    let dirIndex = 0;
+    const limitedDirs = Array.from(filesByDir.entries()).slice(0, 10);
+
+    for (const [dir, files] of limitedDirs) {
+      const dirId = this.sanitizeId(dir);
+      lines.push(`    subgraph ${dirId}["${dir}"]`);
+      for (const file of files.slice(0, 5)) {
+        const fileId = this.sanitizeId(file);
+        lines.push(`        ${fileId}["${this.getShortFileName(file)}"]`);
+      }
+      lines.push('    end');
+      dirIndex++;
+    }
+
+    // Generate import edges
+    const edgeSet = new Set<string>();
+    for (const [sourceFile, imports] of Array.from(fileImports).slice(0, this.config.maxNodes)) {
+      const sourceId = this.sanitizeId(sourceFile);
+      for (const imported of Array.from(imports).slice(0, 5)) {
+        // Check if imported module is in our file list
+        const targetFile = Array.from(fileImports.keys()).find(f => f.includes(imported));
+        if (targetFile) {
+          const targetId = this.sanitizeId(targetFile);
+          const edgeKey = `${sourceId}-${targetId}`;
+          if (!edgeSet.has(edgeKey) && sourceId !== targetId) {
+            lines.push(`    ${sourceId} -.-> ${targetId}`);
+            edgeSet.add(edgeKey);
+          }
+        }
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Get short file name from path.
+   */
+  private getShortFileName(filePath: string): string {
+    const parts = filePath.split('/');
+    return parts[parts.length - 1] || filePath;
+  }
+
+  /**
    * Generate all diagram types.
    */
-  generateAll(): Record<DiagramType, string> {
+  generateAll(): Record<DiagramType | 'callGraph' | 'moduleDeps', string> {
     return {
       class: this.generateClassDiagram(),
       flowchart: this.generateFlowchart(),
       sequence: this.generateSequenceDiagram(),
       er: this.generateERDiagram(),
+      callGraph: this.generateCallGraph(),
+      moduleDeps: this.generateModuleDependencies(),
     };
   }
 

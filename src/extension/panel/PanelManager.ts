@@ -9,6 +9,7 @@ import { BeliefPanel } from './BeliefPanel';
 import { BeliefGraphPanel } from './BeliefGraphPanel';
 import { WatchlistPanel } from './WatchlistPanel';
 import { AuditPanel } from './AuditPanel';
+import { CodeMeshPanel } from './CodeMeshPanel';
 
 /**
  * Manages the lifecycle of all Draagon Forge panels.
@@ -20,6 +21,7 @@ export class PanelManager implements vscode.Disposable {
     private beliefGraphPanel: BeliefGraphPanel | null = null;
     private watchlistPanel: WatchlistPanel | null = null;
     private auditPanel: AuditPanel | null = null;
+    private codeMeshPanel: CodeMeshPanel | null = null;
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -98,6 +100,20 @@ export class PanelManager implements vscode.Disposable {
     }
 
     /**
+     * Open or reveal the code mesh panel.
+     */
+    openCodeMeshPanel(): void {
+        if (this.codeMeshPanel) {
+            this.codeMeshPanel.reveal();
+        } else {
+            this.codeMeshPanel = new CodeMeshPanel(this.context, this.apiClient);
+            this.codeMeshPanel.onDidDispose(() => {
+                this.codeMeshPanel = null;
+            });
+        }
+    }
+
+    /**
      * Dispose of all panels.
      */
     dispose(): void {
@@ -106,5 +122,6 @@ export class PanelManager implements vscode.Disposable {
         this.beliefGraphPanel?.dispose();
         this.watchlistPanel?.dispose();
         this.auditPanel?.dispose();
+        this.codeMeshPanel?.dispose();
     }
 }

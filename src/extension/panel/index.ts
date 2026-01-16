@@ -8,6 +8,7 @@
  * - BeliefGraphPanel: Interactive belief graph visualization
  * - WatchlistPanel: Watch rule configuration
  * - AuditPanel: Commit audit dashboard
+ * - CodeMeshPanel: Code structure visualization with Mermaid diagrams
  */
 
 export * from './PanelManager';
@@ -17,3 +18,4 @@ export * from './BeliefGraphPanel';
 export * from './WatchlistPanel';
 export * from './AuditPanel';
 export * from './ChatViewProvider';
+export * from './CodeMeshPanel';

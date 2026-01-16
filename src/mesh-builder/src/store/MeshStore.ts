@@ -475,6 +475,72 @@ export class MeshStore {
   // --------------------------------------------------------------------------
 
   /**
+   * Get all projects with their last extraction time.
+   * Ordered by most recent first.
+   */
+  async getProjects(): Promise<Array<{
+    project_id: string;
+    branches: string[];
+    last_extraction: string;
+    total_nodes: number;
+  }>> {
+    const session = this.session();
+    try {
+      const result = await session.run(`
+        MATCH (n:MeshNode)
+        WITH n.project_id AS project_id,
+             collect(DISTINCT n.branch) AS branches,
+             max(n.stored_at) AS last_extraction,
+             count(n) AS total_nodes
+        RETURN project_id, branches, last_extraction, total_nodes
+        ORDER BY last_extraction DESC
+      `);
+
+      return result.records.map((r: any) => ({
+        project_id: r.get('project_id'),
+        branches: r.get('branches'),
+        last_extraction: r.get('last_extraction'),
+        total_nodes: r.get('total_nodes')?.toNumber?.() || 0,
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * Search projects by name pattern.
+   */
+  async searchProjects(query: string): Promise<Array<{
+    project_id: string;
+    branches: string[];
+    last_extraction: string;
+    total_nodes: number;
+  }>> {
+    const session = this.session();
+    try {
+      const result = await session.run(`
+        MATCH (n:MeshNode)
+        WHERE toLower(n.project_id) CONTAINS toLower($query)
+        WITH n.project_id AS project_id,
+             collect(DISTINCT n.branch) AS branches,
+             max(n.stored_at) AS last_extraction,
+             count(n) AS total_nodes
+        RETURN project_id, branches, last_extraction, total_nodes
+        ORDER BY last_extraction DESC
+      `, { query });
+
+      return result.records.map((r: any) => ({
+        project_id: r.get('project_id'),
+        branches: r.get('branches'),
+        last_extraction: r.get('last_extraction'),
+        total_nodes: r.get('total_nodes')?.toNumber?.() || 0,
+      }));
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
    * Get files that exist in the mesh for a project/branch.
    */
   async getFiles(projectId: string, branch: string): Promise<string[]> {
