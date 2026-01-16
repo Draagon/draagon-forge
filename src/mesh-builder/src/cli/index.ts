@@ -22,6 +22,8 @@ import {
   applyCorrections,
 } from '../verifier';
 import { SchemaStore, SchemaExport } from '../schema-graph/SchemaStore';
+import { GitTracker, ExtractionStateStore } from '../git/GitTracker';
+import { MeshStore } from '../store/MeshStore';
 
 const program = new Command();
 
@@ -44,6 +46,7 @@ program
   .option('--project-id <id>', 'Project identifier')
   .option('--changed-files <files>', 'Comma-separated list of changed files for incremental extraction')
   .option('--changed-files-from <file>', 'File containing list of changed files (one per line)')
+  .option('--since-commit <sha>', 'Extract only files changed since this commit (git incremental)')
   .option('--verbose', 'Verbose output')
   .action(async (projectPath: string, options) => {
     try {
@@ -74,6 +77,24 @@ program
           .split('\n')
           .map((f) => f.trim())
           .filter((f) => f.length > 0);
+      } else if (options.sinceCommit) {
+        // Use git to find changed files since a specific commit
+        try {
+          const gitTracker = new GitTracker(absolutePath);
+          const changes = gitTracker.getChangedFiles(options.sinceCommit);
+          changedFiles = [
+            ...changes.added,
+            ...changes.modified,
+            ...changes.renamed.map((r) => r.to),
+          ];
+          if (options.verbose) {
+            console.error(`Git incremental mode since ${options.sinceCommit}:`);
+            console.error(`  Added: ${changes.added.length}, Modified: ${changes.modified.length}, Renamed: ${changes.renamed.length}, Deleted: ${changes.deleted.length}`);
+          }
+        } catch (error) {
+          console.error(`Failed to get git changes: ${error}`);
+          process.exit(1);
+        }
       }
 
       const extractorOptions: Partial<ExtractorOptions> = {
@@ -551,6 +572,509 @@ program
       await store.close();
     } catch (error) {
       console.error('Initialization failed:', error);
+      process.exit(1);
+    }
+  });
+
+// Git status command - show git context for a project
+program
+  .command('git-status')
+  .description('Show git context for a project')
+  .argument('<path>', 'Path to project directory')
+  .option('--json', 'Output as JSON')
+  .action(async (projectPath: string, options) => {
+    try {
+      const absolutePath = path.resolve(projectPath);
+      const gitTracker = new GitTracker(absolutePath);
+      const context = gitTracker.getContext();
+
+      if (options.json) {
+        console.log(JSON.stringify(context, null, 2));
+      } else {
+        console.log('Git Context:');
+        console.log(`  Commit: ${context.commit_sha}`);
+        console.log(`  Branch: ${context.branch}`);
+        console.log(`  Message: ${context.commit_message}`);
+        console.log(`  Author: ${context.author}`);
+        console.log(`  Date: ${context.committed_at}`);
+        if (context.tags.length > 0) {
+          console.log(`  Tags: ${context.tags.join(', ')}`);
+        }
+        console.log(`  Clean: ${context.is_clean ? 'Yes' : 'No (uncommitted changes)'}`);
+        if (context.remote_url) {
+          console.log(`  Remote: ${context.remote_url}`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get git status:', error);
+      process.exit(1);
+    }
+  });
+
+// Git changes command - show files changed between commits
+program
+  .command('git-changes')
+  .description('Show files changed between two commits')
+  .argument('<path>', 'Path to project directory')
+  .argument('<from>', 'From commit/branch/tag')
+  .argument('[to]', 'To commit/branch/tag (default: HEAD)')
+  .option('--json', 'Output as JSON')
+  .action(async (projectPath: string, from: string, to: string | undefined, options) => {
+    try {
+      const absolutePath = path.resolve(projectPath);
+      const gitTracker = new GitTracker(absolutePath);
+      const changes = gitTracker.getChangedFiles(from, to || 'HEAD');
+
+      if (options.json) {
+        console.log(JSON.stringify(changes, null, 2));
+      } else {
+        console.log(`Changes from ${from} to ${to || 'HEAD'}:`);
+        console.log('');
+        if (changes.added.length > 0) {
+          console.log('Added:');
+          changes.added.forEach((f) => console.log(`  + ${f}`));
+        }
+        if (changes.modified.length > 0) {
+          console.log('Modified:');
+          changes.modified.forEach((f) => console.log(`  M ${f}`));
+        }
+        if (changes.deleted.length > 0) {
+          console.log('Deleted:');
+          changes.deleted.forEach((f) => console.log(`  - ${f}`));
+        }
+        if (changes.renamed.length > 0) {
+          console.log('Renamed:');
+          changes.renamed.forEach((r) => console.log(`  R ${r.from} -> ${r.to}`));
+        }
+        console.log('');
+        const total = changes.added.length + changes.modified.length + changes.deleted.length + changes.renamed.length;
+        console.log(`Total: ${total} files changed`);
+      }
+    } catch (error) {
+      console.error('Failed to get git changes:', error);
+      process.exit(1);
+    }
+  });
+
+// Extraction history command - show extraction runs for a project
+program
+  .command('history')
+  .description('Show extraction history for a project')
+  .argument('<project-id>', 'Project identifier')
+  .option('--uri <uri>', 'Neo4j URI', 'bolt://localhost:7687')
+  .option('--user <user>', 'Neo4j user', 'neo4j')
+  .option('--password <pass>', 'Neo4j password', 'password')
+  .option('--branch <branch>', 'Filter by branch')
+  .option('--json', 'Output as JSON')
+  .action(async (projectId: string, options) => {
+    try {
+      const store = new ExtractionStateStore({
+        uri: options.uri,
+        user: options.user,
+        password: options.password,
+      });
+
+      await store.connect();
+      const extractions = await store.getProjectExtractions(projectId);
+      await store.close();
+
+      // Filter by branch if specified
+      const filtered = options.branch
+        ? extractions.filter((e) => e.branch === options.branch)
+        : extractions;
+
+      if (options.json) {
+        console.log(JSON.stringify(filtered, null, 2));
+      } else {
+        console.log(`Extraction History for: ${projectId}`);
+        console.log('');
+        if (filtered.length === 0) {
+          console.log('No extractions found.');
+        } else {
+          for (const ext of filtered) {
+            const tags = ext.tags.length > 0 ? ` (${ext.tags.join(', ')})` : '';
+            console.log(`  ${ext.commit_short} [${ext.branch}]${tags}`);
+            console.log(`    ${ext.commit_message}`);
+            console.log(`    ${ext.author} - ${ext.committed_at}`);
+            console.log('');
+          }
+          console.log(`Total: ${filtered.length} extractions`);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get extraction history:', error);
+      process.exit(1);
+    }
+  });
+
+// Record extraction command - record an extraction run in Neo4j
+program
+  .command('record-extraction')
+  .description('Record an extraction run in Neo4j for tracking')
+  .argument('<mesh-file>', 'Path to extracted mesh JSON file')
+  .option('--uri <uri>', 'Neo4j URI', 'bolt://localhost:7687')
+  .option('--user <user>', 'Neo4j user', 'neo4j')
+  .option('--password <pass>', 'Neo4j password', 'password')
+  .action(async (meshFile: string, options) => {
+    try {
+      // Load mesh
+      const meshContent = await fs.readFile(meshFile, 'utf-8');
+      const mesh = JSON.parse(meshContent);
+
+      if (!mesh.git) {
+        console.error('Mesh file does not contain git context. Extract with a git-tracked project.');
+        process.exit(1);
+      }
+
+      const store = new ExtractionStateStore({
+        uri: options.uri,
+        user: options.user,
+        password: options.password,
+      });
+
+      await store.connect();
+      await store.initialize();
+
+      const id = await store.recordExtraction(
+        mesh.project_id,
+        mesh.git,
+        {
+          files: mesh.statistics.files_processed,
+          nodes: mesh.statistics.total_nodes,
+          edges: mesh.statistics.total_edges,
+        }
+      );
+
+      await store.close();
+
+      console.log(`Recorded extraction: ${id}`);
+      console.log(`  Project: ${mesh.project_id}`);
+      console.log(`  Branch: ${mesh.git.branch}`);
+      console.log(`  Commit: ${mesh.git.commit_short} - ${mesh.git.commit_message}`);
+      console.log(`  Nodes: ${mesh.statistics.total_nodes}, Edges: ${mesh.statistics.total_edges}`);
+    } catch (error) {
+      console.error('Failed to record extraction:', error);
+      process.exit(1);
+    }
+  });
+
+// Store mesh command - store full extraction in Neo4j
+program
+  .command('store')
+  .description('Store extraction result in Neo4j mesh database')
+  .argument('<mesh-file>', 'Path to extracted mesh JSON file')
+  .option('--uri <uri>', 'Neo4j URI', 'bolt://localhost:7687')
+  .option('--user <user>', 'Neo4j user', 'neo4j')
+  .option('--password <pass>', 'Neo4j password', 'password')
+  .option('--incremental', 'Merge incrementally (only update changed files)', false)
+  .option('--deleted-files <files>', 'Comma-separated list of deleted files to remove')
+  .action(async (meshFile: string, options) => {
+    try {
+      // Load mesh
+      const meshContent = await fs.readFile(meshFile, 'utf-8');
+      const mesh = JSON.parse(meshContent);
+
+      const store = new MeshStore({
+        uri: options.uri,
+        user: options.user,
+        password: options.password,
+      });
+
+      console.error('Connecting to Neo4j...');
+      await store.connect();
+      await store.initialize();
+
+      const branch = mesh.git?.branch || 'unknown';
+      console.error(`Storing mesh for project: ${mesh.project_id}, branch: ${branch}`);
+      console.error(`  Files: ${mesh.results?.length || 0}`);
+      console.error(`  Nodes: ${mesh.statistics?.total_nodes || 0}`);
+      console.error(`  Edges: ${mesh.statistics?.total_edges || 0}`);
+
+      let result;
+      if (options.incremental) {
+        const deletedFiles = options.deletedFiles
+          ? options.deletedFiles.split(',').map((f: string) => f.trim())
+          : [];
+        console.error(`\nMerging incrementally...`);
+        if (deletedFiles.length > 0) {
+          console.error(`  Deleted files to remove: ${deletedFiles.length}`);
+        }
+        result = await store.mergeIncrementalExtraction(mesh, deletedFiles);
+      } else {
+        console.error(`\nStoring full extraction (replacing existing)...`);
+        result = await store.storeFullExtraction(mesh);
+      }
+
+      await store.close();
+
+      console.error('\n--- Store Result ---');
+      console.error(`Files removed: ${result.files_deleted.length}`);
+      console.error(`Files inserted: ${result.files_inserted.length}`);
+      console.error(`Nodes: -${result.nodes_removed} / +${result.nodes_inserted}`);
+      console.error(`Edges: -${result.edges_removed} / +${result.edges_inserted}`);
+    } catch (error) {
+      console.error('Store failed:', error);
+      process.exit(1);
+    }
+  });
+
+// Query mesh command - query the stored mesh
+program
+  .command('query')
+  .description('Query the stored mesh in Neo4j')
+  .argument('<project-id>', 'Project identifier')
+  .option('--uri <uri>', 'Neo4j URI', 'bolt://localhost:7687')
+  .option('--user <user>', 'Neo4j user', 'neo4j')
+  .option('--password <pass>', 'Neo4j password', 'password')
+  .option('--branch <branch>', 'Branch to query')
+  .option('--file <path>', 'Filter by file path')
+  .option('--type <type>', 'Filter by node type (e.g., Function, Class)')
+  .option('--stats', 'Show statistics only')
+  .option('--json', 'Output as JSON')
+  .action(async (projectId: string, options) => {
+    try {
+      const store = new MeshStore({
+        uri: options.uri,
+        user: options.user,
+        password: options.password,
+      });
+
+      await store.connect();
+
+      if (options.stats) {
+        const stats = await store.getStatistics(projectId, options.branch);
+        await store.close();
+
+        if (options.json) {
+          console.log(JSON.stringify(stats, null, 2));
+        } else {
+          console.log(`Mesh Statistics for: ${projectId}${options.branch ? ` (${options.branch})` : ''}`);
+          console.log('');
+          console.log(`  Total nodes: ${stats.total_nodes}`);
+          console.log(`  Total edges: ${stats.total_edges}`);
+          console.log(`  Files: ${stats.files}`);
+          if (stats.last_commit) {
+            console.log(`  Last commit: ${stats.last_commit.substring(0, 8)}`);
+          }
+          console.log('');
+          console.log('  Node types:');
+          for (const [type, count] of Object.entries(stats.node_types).sort((a, b) => b[1] - a[1])) {
+            console.log(`    ${type}: ${count}`);
+          }
+        }
+      } else {
+        const nodes = await store.getNodes({
+          project_id: projectId,
+          branch: options.branch,
+          file_path: options.file,
+          node_type: options.type,
+        });
+        await store.close();
+
+        if (options.json) {
+          console.log(JSON.stringify(nodes, null, 2));
+        } else {
+          console.log(`Nodes for: ${projectId}${options.branch ? ` (${options.branch})` : ''}`);
+          console.log('');
+          for (const node of nodes) {
+            console.log(`  ${node.type} "${node.name}" @ ${node.source.file}:${node.source.line_start}`);
+          }
+          console.log('');
+          console.log(`Total: ${nodes.length} nodes`);
+        }
+      }
+    } catch (error) {
+      console.error('Query failed:', error);
+      process.exit(1);
+    }
+  });
+
+// Sync command - full workflow: extract + store, with incremental support
+program
+  .command('sync')
+  .description('Extract and store mesh (supports incremental updates)')
+  .argument('<path>', 'Path to project directory')
+  .option('--uri <uri>', 'Neo4j URI', 'bolt://localhost:7687')
+  .option('--user <user>', 'Neo4j user', 'neo4j')
+  .option('--password <pass>', 'Neo4j password', 'password')
+  .option('--project-id <id>', 'Project identifier')
+  .option('--full', 'Force full extraction (ignore last sync)', false)
+  .option('--verbose', 'Verbose output')
+  .action(async (projectPath: string, options) => {
+    try {
+      const absolutePath = path.resolve(projectPath);
+      const projectId = options.projectId || path.basename(absolutePath);
+
+      // Check if git repo
+      let gitTracker: GitTracker | null = null;
+      try {
+        gitTracker = new GitTracker(absolutePath);
+        gitTracker.getContext(); // Verify it works
+      } catch {
+        gitTracker = null;
+      }
+
+      const meshStore = new MeshStore({
+        uri: options.uri,
+        user: options.user,
+        password: options.password,
+      });
+
+      await meshStore.connect();
+      await meshStore.initialize();
+
+      // Determine if we should do incremental
+      let changedFiles: string[] | undefined;
+      let deletedFiles: string[] = [];
+      let isIncremental = false;
+
+      if (gitTracker && !options.full) {
+        const context = gitTracker.getContext();
+        const stats = await meshStore.getStatistics(projectId, context.branch);
+
+        if (stats.last_commit && stats.total_nodes > 0) {
+          // We have a previous extraction - check if we can do incremental
+          const changes = gitTracker.getChangedFiles(stats.last_commit);
+
+          if (changes.added.length + changes.modified.length + changes.deleted.length > 0) {
+            isIncremental = true;
+            changedFiles = [
+              ...changes.added,
+              ...changes.modified,
+              ...changes.renamed.map((r) => r.to),
+            ];
+            deletedFiles = changes.deleted;
+
+            if (options.verbose) {
+              console.error(`Incremental sync since ${stats.last_commit.substring(0, 8)}:`);
+              console.error(`  Added: ${changes.added.length}`);
+              console.error(`  Modified: ${changes.modified.length}`);
+              console.error(`  Deleted: ${changes.deleted.length}`);
+              console.error(`  Renamed: ${changes.renamed.length}`);
+            }
+          } else {
+            console.error('No changes since last sync.');
+            await meshStore.close();
+            return;
+          }
+        }
+      }
+
+      // Extract
+      if (options.verbose) {
+        console.error(isIncremental ? '\nExtracting changed files...' : '\nExtracting full project...');
+      }
+
+      const extractor = new FileExtractor(
+        {
+          id: projectId,
+          name: projectId,
+          path: absolutePath,
+        },
+        { changedFiles }
+      );
+      const result = await extractor.extractProject();
+
+      if (options.verbose) {
+        console.error(`Extracted: ${result.statistics.files_processed} files, ${result.statistics.total_nodes} nodes`);
+      }
+
+      // Store
+      if (options.verbose) {
+        console.error('\nStoring in Neo4j...');
+      }
+
+      let storeResult;
+      if (isIncremental) {
+        storeResult = await meshStore.mergeIncrementalExtraction(result, deletedFiles);
+      } else {
+        storeResult = await meshStore.storeFullExtraction(result);
+      }
+
+      await meshStore.close();
+
+      // Summary
+      console.error('\n--- Sync Complete ---');
+      console.error(`Project: ${projectId}`);
+      console.error(`Branch: ${result.git?.branch || 'unknown'}`);
+      console.error(`Commit: ${result.git?.commit_short || 'unknown'}`);
+      console.error(`Mode: ${isIncremental ? 'incremental' : 'full'}`);
+      console.error(`Nodes: -${storeResult.nodes_removed} / +${storeResult.nodes_inserted}`);
+      console.error(`Edges: -${storeResult.edges_removed} / +${storeResult.edges_inserted}`);
+    } catch (error) {
+      console.error('Sync failed:', error);
+      process.exit(1);
+    }
+  });
+
+// Link command - create cross-project links
+program
+  .command('link')
+  .description('Create cross-project links from multiple extraction results')
+  .argument('<mesh-files...>', 'Paths to extracted mesh JSON files from different projects')
+  .option('-o, --output <file>', 'Output file for links (default: stdout)')
+  .option('--min-confidence <n>', 'Minimum confidence for links', '0.5')
+  .option('--verbose', 'Verbose output')
+  .action(async (meshFiles: string[], options) => {
+    try {
+      if (meshFiles.length < 2) {
+        console.error('Error: Cross-project linking requires at least 2 project extraction results');
+        process.exit(1);
+      }
+
+      // Load all mesh files
+      const projectResults = [];
+      for (const meshFile of meshFiles) {
+        const content = await fs.readFile(meshFile, 'utf-8');
+        projectResults.push(JSON.parse(content));
+      }
+
+      if (options.verbose) {
+        console.error(`Linking ${projectResults.length} projects:`);
+        for (const result of projectResults) {
+          const refCount = result.external_references?.length || 0;
+          console.error(`  ${result.project_id}: ${refCount} external references`);
+        }
+      }
+
+      // Create a FileExtractor just for the linking functionality
+      const extractor = new FileExtractor({
+        id: 'linker',
+        name: 'linker',
+        path: process.cwd(),
+      }, { enableAI: false });
+
+      // Perform cross-project linking
+      const linkingResult = await extractor.linkAcrossProjects(projectResults);
+
+      if (options.verbose) {
+        console.error('\n--- Linking Results ---');
+        console.error(`Matches found: ${linkingResult.stats.totalMatches}`);
+        console.error(`Links created: ${linkingResult.stats.linksCreated}`);
+        console.error(`Edges created: ${linkingResult.stats.edgesCreated}`);
+        console.error('By type:');
+        for (const [type, count] of Object.entries(linkingResult.stats.byType)) {
+          console.error(`  ${type}: ${count}`);
+        }
+      }
+
+      // Output result
+      const output = JSON.stringify({
+        links: linkingResult.links,
+        edges: linkingResult.edges,
+        stats: linkingResult.stats,
+      }, null, 2);
+
+      if (options.output) {
+        await fs.writeFile(options.output, output);
+        if (options.verbose) {
+          console.error(`\nOutput written to: ${options.output}`);
+        }
+      } else {
+        console.log(output);
+      }
+    } catch (error) {
+      console.error('Cross-project linking failed:', error);
       process.exit(1);
     }
   });

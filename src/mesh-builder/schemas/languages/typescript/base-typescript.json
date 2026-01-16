@@ -3,6 +3,7 @@
   "name": "base-typescript",
   "version": "1.0.0",
   "language": "typescript",
+  "additional_languages": ["javascript"],
   "description": "Base TypeScript/JavaScript extraction patterns",
   "detection": {
     "imports": [],
