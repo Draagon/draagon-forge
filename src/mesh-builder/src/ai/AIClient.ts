@@ -12,6 +12,10 @@ export interface AIClientConfig {
   model?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Request timeout in milliseconds (default: 60000) */
+  timeoutMs?: number;
+  /** Maximum retries on timeout (default: 2) */
+  maxRetries?: number;
 }
 
 export interface AIResponse<T> {
@@ -26,7 +30,23 @@ const DEFAULT_CONFIG: Required<AIClientConfig> = {
   model: 'llama-3.3-70b-versatile',
   maxTokens: 4096,
   temperature: 0.1,
+  timeoutMs: 60000, // 60 seconds
+  maxRetries: 2,
 };
+
+/**
+ * Validation errors that can occur during AI response parsing.
+ */
+export class AIValidationError extends Error {
+  constructor(
+    message: string,
+    public readonly rawResponse: string,
+    public readonly field?: string
+  ) {
+    super(message);
+    this.name = 'AIValidationError';
+  }
+}
 
 export class AIClient {
   private client: Groq;
@@ -45,7 +65,7 @@ export class AIClient {
   }
 
   /**
-   * Send a prompt and parse XML response.
+   * Send a prompt and parse XML response with timeout and retry support.
    */
   async query<T>(
     systemPrompt: string,
@@ -53,25 +73,61 @@ export class AIClient {
     parseResponse: (xml: string) => T
   ): Promise<AIResponse<T>> {
     const startTime = Date.now();
+    let lastError: Error | undefined;
+    let content = '';
+    let tokensUsed = 0;
 
-    const response = await this.client.chat.completions.create({
-      model: this.config.model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      max_tokens: this.config.maxTokens,
-      temperature: this.config.temperature,
-    });
+    // Retry loop with timeout
+    for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+      try {
+        const response = await this.withTimeout(
+          this.client.chat.completions.create({
+            model: this.config.model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+            max_tokens: this.config.maxTokens,
+            temperature: this.config.temperature,
+          }),
+          this.config.timeoutMs
+        );
+
+        content = response.choices[0]?.message?.content || '';
+        tokensUsed = response.usage?.total_tokens || 0;
+        break; // Success - exit retry loop
+
+      } catch (error) {
+        lastError = error as Error;
+        const isTimeout = (error as Error).message?.includes('timeout');
+        const isRetryable = isTimeout || (error as Error).message?.includes('rate limit');
+
+        if (!isRetryable || attempt === this.config.maxRetries) {
+          throw error;
+        }
+
+        // Exponential backoff: 1s, 2s, 4s
+        const backoffMs = Math.pow(2, attempt) * 1000;
+        console.warn(`AI request attempt ${attempt + 1} failed (${(error as Error).message}), retrying in ${backoffMs}ms...`);
+        await this.delay(backoffMs);
+      }
+    }
 
     const latencyMs = Date.now() - startTime;
-    const content = response.choices[0]?.message?.content || '';
-    const tokensUsed = response.usage?.total_tokens || 0;
 
     this.totalTokensUsed += tokensUsed;
     this.callCount++;
 
-    const data = parseResponse(content);
+    // Parse and validate response
+    let data: T;
+    try {
+      data = parseResponse(content);
+    } catch (parseError) {
+      throw new AIValidationError(
+        `Failed to parse AI response: ${(parseError as Error).message}`,
+        content
+      );
+    }
 
     return {
       data,
@@ -79,6 +135,35 @@ export class AIClient {
       model: this.config.model,
       latencyMs,
     };
+  }
+
+  /**
+   * Wrap a promise with timeout protection.
+   */
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+    let timeoutId: NodeJS.Timeout;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`AI request timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+
+    try {
+      const result = await Promise.race([promise, timeoutPromise]);
+      clearTimeout(timeoutId!);
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId!);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to delay execution.
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -114,7 +199,12 @@ Possible values: ${context.options.join(', ')}
 
 Please resolve this ambiguity.`;
 
-    return this.query(systemPrompt, userPrompt, parseDisambiguationXML);
+    const response = await this.query(systemPrompt, userPrompt, parseDisambiguationXML);
+
+    // Validate and sanitize the AI response
+    response.data = validateDisambiguationResult(response.data);
+
+    return response;
   }
 
   /**
@@ -168,7 +258,157 @@ ${context.content}
 
 Please analyze this code and extract all meaningful entities (classes, functions, API endpoints, database models, etc.) and their relationships.`;
 
-    return this.query(systemPrompt, userPrompt, parseDiscoveryXML);
+    const response = await this.query(systemPrompt, userPrompt, parseDiscoveryXML);
+
+    // Validate and sanitize the AI response
+    response.data = validateDiscoveryResult(response.data);
+
+    return response;
+  }
+
+  /**
+   * Discover code patterns with enriched project context (REQ-034).
+   * This uses beliefs, patterns, and external knowledge to improve discovery.
+   */
+  async discoverWithContext(context: EnrichedDiscoveryContext): Promise<AIResponse<DiscoveryResult>> {
+    // Build enhanced system prompt with project knowledge
+    let systemPrompt = `You are a code analysis expert.`;
+
+    // Add framework specialization if detected
+    if (context.frameworks && context.frameworks.length > 0) {
+      const frameworkNames = context.frameworks.map(f => f.name).join(', ');
+      systemPrompt += ` You are specializing in analyzing ${frameworkNames} code.`;
+    }
+
+    systemPrompt += ` Analyze the given source code and extract meaningful code entities and relationships.
+
+`;
+
+    // Add beliefs as project knowledge
+    if (context.beliefs && context.beliefs.length > 0) {
+      systemPrompt += `PROJECT KNOWLEDGE (beliefs about this codebase):
+`;
+      for (const belief of context.beliefs.slice(0, 10)) {
+        systemPrompt += `- ${belief.content} (conviction: ${belief.conviction.toFixed(2)})
+`;
+      }
+      systemPrompt += `
+`;
+    }
+
+    // Add known patterns
+    if (context.patterns && context.patterns.length > 0) {
+      systemPrompt += `KNOWN PATTERNS (extraction patterns for this framework):
+`;
+      for (const pattern of context.patterns.slice(0, 5)) {
+        systemPrompt += `- ${pattern.description}: ${pattern.pattern} → ${pattern.nodeType}
+`;
+      }
+      systemPrompt += `
+`;
+    }
+
+    // Add external knowledge
+    if (context.externalKnowledge && context.externalKnowledge.length > 0) {
+      systemPrompt += `EXTERNAL DOCUMENTATION:
+`;
+      for (const ext of context.externalKnowledge.slice(0, 3)) {
+        systemPrompt += `[${ext.source}]: ${ext.content.slice(0, 500)}
+`;
+      }
+      systemPrompt += `
+`;
+    }
+
+    systemPrompt += `Output your response in XML format:
+<response>
+  <framework_detected>
+    <name>Framework name or "unknown"</name>
+    <confidence>0.0 to 1.0</confidence>
+  </framework_detected>
+  <nodes>
+    <node>
+      <type>MeshNodeType (e.g., Class, Function, ApiEndpoint)</type>
+      <name>Entity name</name>
+      <line_start>Line number</line_start>
+      <line_end>Line number</line_end>
+      <confidence>0.0 to 1.0</confidence>
+      <properties>
+        <property name="key">value</property>
+      </properties>
+    </node>
+  </nodes>
+  <edges>
+    <edge>
+      <type>MeshEdgeType (e.g., CALLS, CONTAINS, IMPORTS)</type>
+      <from_name>Source entity name</from_name>
+      <to_name>Target entity name</to_name>
+      <confidence>0.0 to 1.0</confidence>
+    </edge>
+  </edges>
+  <schema_suggestions>
+    <suggestion>
+      <pattern>Regex pattern that would match this construct</pattern>
+      <example>Example code that matches</example>
+      <node_type>What node type it should create</node_type>
+    </suggestion>
+  </schema_suggestions>
+</response>`;
+
+    // Build enhanced user prompt
+    let userPrompt = `File: ${context.file}
+Language: ${context.language}
+`;
+
+    // Add detected frameworks
+    if (context.frameworks && context.frameworks.length > 0) {
+      userPrompt += `
+DETECTED FRAMEWORKS:
+`;
+      for (const fw of context.frameworks) {
+        userPrompt += `- ${fw.name} (confidence: ${fw.confidence.toFixed(2)})
+`;
+        if (fw.evidence.length > 0) {
+          userPrompt += `  Evidence: ${fw.evidence.slice(0, 3).join(', ')}
+`;
+        }
+      }
+    }
+
+    // Add related file context (type signatures)
+    if (context.relatedFiles && context.relatedFiles.length > 0) {
+      userPrompt += `
+RELATED FILES (type signatures from imports):
+`;
+      for (const related of context.relatedFiles.slice(0, 5)) {
+        userPrompt += `- ${related.path}:
+`;
+        for (const exp of related.exports.slice(0, 5)) {
+          if (exp.signature) {
+            userPrompt += `    ${exp.signature}
+`;
+          } else {
+            userPrompt += `    ${exp.kind} ${exp.name}
+`;
+          }
+        }
+      }
+    }
+
+    userPrompt += `
+Source code:
+\`\`\`${context.language}
+${context.content}
+\`\`\`
+
+Please analyze this code and extract all meaningful entities (classes, functions, API endpoints, database models, etc.) and their relationships. Use the project knowledge and framework patterns provided to improve accuracy.`;
+
+    const response = await this.query(systemPrompt, userPrompt, parseDiscoveryXML);
+
+    // Validate and sanitize the AI response
+    response.data = validateDiscoveryResult(response.data);
+
+    return response;
   }
 
   /**
@@ -275,6 +515,45 @@ export interface DiscoveryContext {
   file: string;
   language: string;
   content: string;
+}
+
+/**
+ * Enhanced discovery context with project knowledge (REQ-034).
+ */
+export interface EnrichedDiscoveryContext extends DiscoveryContext {
+  /** Detected frameworks with confidence */
+  frameworks?: Array<{
+    name: string;
+    confidence: number;
+    evidence: string[];
+  }>;
+  /** Relevant beliefs from semantic memory */
+  beliefs?: Array<{
+    content: string;
+    conviction: number;
+    source: string;
+  }>;
+  /** Known extraction patterns for detected frameworks */
+  patterns?: Array<{
+    description: string;
+    pattern: string;
+    nodeType: string;
+  }>;
+  /** Type signatures from related files */
+  relatedFiles?: Array<{
+    path: string;
+    exports: Array<{
+      name: string;
+      kind: string;
+      signature?: string;
+    }>;
+  }>;
+  /** External knowledge (from Context7, web, etc.) */
+  externalKnowledge?: Array<{
+    source: string;
+    content: string;
+    confidence: number;
+  }>;
 }
 
 export interface DiscoveryResult {
@@ -488,6 +767,77 @@ function parseSchemaGenerationXML(xml: string): GeneratedSchema {
     }
   }
 
+  // Parse extractors section
+  const extractors: GeneratedSchema['schema']['extractors'] = {};
+  const extractorsMatch = schemaXml.match(/<extractors>([\s\S]*?)<\/extractors>/);
+  if (extractorsMatch && extractorsMatch[1]) {
+    // Match each extractor with its name attribute
+    const extractorMatches = extractorsMatch[1].matchAll(
+      /<extractor\s+name="([^"]+)">([\s\S]*?)<\/extractor>/g
+    );
+
+    for (const match of extractorMatches) {
+      const extractorName = match[1];
+      const extractorXml = match[2];
+      if (!extractorName || !extractorXml) continue;
+
+      const extractorPatterns: GeneratedSchema['schema']['extractors'][string]['patterns'] = [];
+
+      // Parse patterns within this extractor
+      const patternBlockMatches = extractorXml.matchAll(/<pattern>([\s\S]*?)<\/pattern>/g);
+      for (const patternMatch of patternBlockMatches) {
+        const patternXml = patternMatch[1];
+        if (!patternXml) continue;
+
+        // Parse captures
+        const captures: Record<string, { group: number }> = {};
+        const captureMatches = patternXml.matchAll(
+          /<capture\s+name="([^"]+)"\s+group="(\d+)"\s*\/>/g
+        );
+        for (const cm of captureMatches) {
+          if (cm[1] && cm[2]) {
+            captures[cm[1]] = { group: parseInt(cm[2]) };
+          }
+        }
+
+        // Parse node_template if present
+        let nodeTemplate: GeneratedSchema['schema']['extractors'][string]['patterns'][number]['nodeTemplate'] | undefined;
+        const nodeTemplateMatch = patternXml.match(
+          /<node_template\s+type="([^"]+)"\s+name_from="([^"]+)">([\s\S]*?)<\/node_template>/
+        );
+        if (nodeTemplateMatch) {
+          const templateProps: Record<string, string> = {};
+          const propMatches = (nodeTemplateMatch[3] || '').matchAll(
+            /<property\s+name="([^"]+)">([^<]*)<\/property>/g
+          );
+          for (const pm of propMatches) {
+            if (pm[1] && pm[2] !== undefined) {
+              templateProps[pm[1]] = pm[2];
+            }
+          }
+
+          nodeTemplate = {
+            type: nodeTemplateMatch[1] || '',
+            nameFrom: nodeTemplateMatch[2] || '',
+            properties: templateProps,
+          };
+        }
+
+        extractorPatterns.push({
+          name: extractXMLTag(patternXml, 'name') || '',
+          regex: extractXMLTag(patternXml, 'regex') || '',
+          captures,
+          nodeTemplate,
+        });
+      }
+
+      extractors[extractorName] = {
+        description: extractXMLTag(extractorXml, 'description') || '',
+        patterns: extractorPatterns,
+      };
+    }
+  }
+
   return {
     schema: {
       name: extractXMLTag(schemaXml, 'name') || 'unknown',
@@ -501,7 +851,7 @@ function parseSchemaGenerationXML(xml: string): GeneratedSchema {
           extractXMLTag(schemaXml, 'confidence_boost') || '0.3'
         ),
       },
-      extractors: {}, // Simplified - full implementation would parse extractors
+      extractors,
     },
     confidence: parseFloat(extractXMLTag(xml, 'confidence') || '0'),
     reasoning: extractXMLTag(xml, 'reasoning') || '',
@@ -512,4 +862,101 @@ function extractXMLTag(xml: string, tag: string): string | undefined {
   const regex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`);
   const match = xml.match(regex);
   return match?.[1]?.trim();
+}
+
+// ============================================================================
+// Runtime Validators
+// ============================================================================
+
+/** Valid node types for validation */
+const VALID_NODE_TYPES = new Set([
+  'File', 'Module', 'Class', 'Interface', 'Function', 'Method',
+  'Variable', 'Import', 'Decorator', 'ApiEndpoint', 'ApiParameter',
+  'ApiResponse', 'Queue', 'Topic', 'Consumer', 'Producer',
+  'Database', 'Table', 'Column', 'Model', 'ExternalService', 'ConfigValue',
+]);
+
+/** Valid edge types for validation */
+const VALID_EDGE_TYPES = new Set([
+  'CONTAINS', 'IMPORTS', 'EXPORTS', 'INHERITS', 'IMPLEMENTS',
+  'CALLS', 'USES', 'RETURNS', 'ACCEPTS', 'DECORATES', 'DECORATED_BY',
+  'EXPOSES', 'HANDLED_BY', 'PUBLISHES_TO', 'SUBSCRIBES_TO',
+  'READS_FROM', 'WRITES_TO', 'QUERIES', 'CALLS_SERVICE', 'DEPENDS_ON',
+]);
+
+/**
+ * Validate that a confidence value is within valid range.
+ */
+function validateConfidence(value: number, field: string): number {
+  if (isNaN(value) || value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+/**
+ * Validate and sanitize a discovery result from AI.
+ * Filters out invalid nodes/edges and clamps confidence values.
+ */
+export function validateDiscoveryResult(result: DiscoveryResult): DiscoveryResult {
+  // Validate framework detection
+  let frameworkDetected = result.frameworkDetected;
+  if (frameworkDetected) {
+    frameworkDetected = {
+      name: frameworkDetected.name || 'unknown',
+      confidence: validateConfidence(frameworkDetected.confidence, 'framework_confidence'),
+    };
+    if (frameworkDetected.name === 'unknown' || frameworkDetected.name === '') {
+      frameworkDetected = undefined;
+    }
+  }
+
+  // Validate and filter nodes
+  const nodes = result.nodes.filter(node => {
+    // Must have a name
+    if (!node.name || node.name.trim() === '') return false;
+
+    // Must have valid line numbers
+    if (node.lineStart < 0 || node.lineEnd < node.lineStart) return false;
+
+    return true;
+  }).map(node => ({
+    ...node,
+    type: VALID_NODE_TYPES.has(node.type) ? node.type : 'Function', // Default to Function
+    confidence: validateConfidence(node.confidence, 'node_confidence'),
+  }));
+
+  // Validate and filter edges
+  const edges = result.edges.filter(edge => {
+    // Must have from and to
+    if (!edge.fromName || !edge.toName) return false;
+    // from and to must be different
+    if (edge.fromName === edge.toName) return false;
+    return true;
+  }).map(edge => ({
+    ...edge,
+    type: VALID_EDGE_TYPES.has(edge.type) ? edge.type : 'USES', // Default to USES
+    confidence: validateConfidence(edge.confidence, 'edge_confidence'),
+  }));
+
+  // Filter schema suggestions
+  const schemaSuggestions = result.schemaSuggestions.filter(sugg => {
+    return sugg.pattern && sugg.pattern.trim() !== '' && sugg.nodeType;
+  });
+
+  return {
+    frameworkDetected,
+    nodes,
+    edges,
+    schemaSuggestions,
+  };
+}
+
+/**
+ * Validate a disambiguation result from AI.
+ */
+export function validateDisambiguationResult(result: DisambiguationResult): DisambiguationResult {
+  return {
+    ...result,
+    confidence: validateConfidence(result.confidence, 'confidence'),
+  };
 }

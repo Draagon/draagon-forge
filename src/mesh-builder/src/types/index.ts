@@ -166,6 +166,28 @@ export interface FileExtractionResult {
   errors: string[];
 }
 
+/** Git context for versioned extraction */
+export interface GitContext {
+  /** Full commit SHA */
+  commit_sha: string;
+  /** Short commit SHA (first 8 chars) */
+  commit_short: string;
+  /** Commit message (first line) */
+  commit_message: string;
+  /** Commit author */
+  author: string;
+  /** Commit timestamp (ISO) */
+  committed_at: string;
+  /** Current branch name */
+  branch: string;
+  /** Git tags on this commit */
+  tags: string[];
+  /** Is the working directory clean? */
+  is_clean: boolean;
+  /** Remote origin URL (if available) */
+  remote_url?: string;
+}
+
 /** Result of extracting an entire project */
 export interface ProjectExtractionResult {
   /** Project identifier */
@@ -174,12 +196,32 @@ export interface ProjectExtractionResult {
   project_path: string;
   /** ISO timestamp */
   timestamp: string;
+  /** Git context (commit, branch, tags) */
+  git?: GitContext;
   /** Extraction statistics */
   statistics: ExtractionStatistics;
   /** Per-file results */
   results: FileExtractionResult[];
   /** Cross-project links (if multiple projects analyzed) */
   cross_project_links?: CrossProjectLink[];
+  /** External references collected for cross-project linking */
+  external_references?: ExternalReferenceInfo[];
+}
+
+/** External reference info for cross-project linking */
+export interface ExternalReferenceInfo {
+  /** Type of reference (queue, api, database, etc.) */
+  type: string;
+  /** Identifier (queue name, API path, etc.) */
+  identifier: string;
+  /** Direction (produce, consume, both) */
+  direction: string;
+  /** Source node ID */
+  source_node_id: string;
+  /** Source file */
+  source_file: string;
+  /** Confidence */
+  confidence: number;
 }
 
 /** Statistics from an extraction run */
@@ -227,8 +269,10 @@ export interface Schema {
   name: string;
   /** Schema version */
   version: string;
-  /** Target language */
+  /** Primary target language */
   language: string;
+  /** Additional languages this schema can handle (e.g., "javascript" for a TypeScript schema) */
+  additional_languages?: string[];
   /** Description */
   description?: string;
   /** How to detect if this schema applies */
