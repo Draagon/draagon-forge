@@ -252,6 +252,164 @@
           }
         }
       ]
+    },
+    "endpoints": {
+      "description": "Express/Fastify/Hono API endpoint definitions",
+      "patterns": [
+        {
+          "name": "express_get",
+          "regex": "(?:app|router|server)\\.get\\s*\\(['\"]([^'\"]+)['\"]",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "GET",
+              "framework": "express"
+            }
+          }
+        },
+        {
+          "name": "express_post",
+          "regex": "(?:app|router|server)\\.post\\s*\\(['\"]([^'\"]+)['\"]",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "POST",
+              "framework": "express"
+            }
+          }
+        },
+        {
+          "name": "express_put",
+          "regex": "(?:app|router|server)\\.put\\s*\\(['\"]([^'\"]+)['\"]",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "PUT",
+              "framework": "express"
+            }
+          }
+        },
+        {
+          "name": "express_delete",
+          "regex": "(?:app|router|server)\\.delete\\s*\\(['\"]([^'\"]+)['\"]",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "DELETE",
+              "framework": "express"
+            }
+          }
+        },
+        {
+          "name": "express_patch",
+          "regex": "(?:app|router|server)\\.patch\\s*\\(['\"]([^'\"]+)['\"]",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "PATCH",
+              "framework": "express"
+            }
+          }
+        },
+        {
+          "name": "nestjs_get",
+          "regex": "^\\s*@Get\\s*\\(['\"]?([^'\"\\)]*)['\"]?\\)",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1, "default": "/" }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "GET",
+              "framework": "nestjs"
+            }
+          }
+        },
+        {
+          "name": "nestjs_post",
+          "regex": "^\\s*@Post\\s*\\(['\"]?([^'\"\\)]*)['\"]?\\)",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1, "default": "/" }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "POST",
+              "framework": "nestjs"
+            }
+          }
+        },
+        {
+          "name": "nestjs_put",
+          "regex": "^\\s*@Put\\s*\\(['\"]?([^'\"\\)]*)['\"]?\\)",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1, "default": "/" }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "PUT",
+              "framework": "nestjs"
+            }
+          }
+        },
+        {
+          "name": "nestjs_delete",
+          "regex": "^\\s*@Delete\\s*\\(['\"]?([^'\"\\)]*)['\"]?\\)",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1, "default": "/" }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "DELETE",
+              "framework": "nestjs"
+            }
+          }
+        }
+      ]
     }
   },
   "ai_hints": {

@@ -615,28 +615,47 @@ export class PatternMatcher {
     const lines = file.content.split('\n');
 
     // Build a map of function/method nodes by their scope (line ranges)
-    const functionNodes = nodes.filter(
+    const callableNodes = nodes.filter(
       (n) => n.type === 'Function' || n.type === 'Method'
     );
 
-    // Simple call detection regex patterns
-    // Python: function_name(, self.method(, Class.method(, await func(
-    // TypeScript: function_name(, this.method(, object.method(, await func(
+    // Build a map of all known callable names in this file for resolution
+    const callablesByName = new Map<string, MeshNode>();
+    for (const node of callableNodes) {
+      callablesByName.set(node.name, node);
+    }
+
+    // Also include Class nodes - they might have constructors called
+    const classNodes = nodes.filter((n) => n.type === 'Class');
+    for (const node of classNodes) {
+      callablesByName.set(node.name, node);
+    }
+
+    // Keywords to skip (only actual control flow, not general built-ins)
+    // We WANT to track calls to built-ins like map(), filter() as they indicate functional style
+    const skipKeywords = new Set([
+      'if', 'for', 'while', 'switch', 'catch', 'with', 'return', 'throw',
+      'new', 'typeof', 'delete', 'void', 'instanceof', 'in', 'of',
+      'export', 'import', 'require', 'default', 'class', 'function',
+      'async', 'await', 'yield', 'try', 'finally', 'else', 'case', 'break', 'continue',
+    ]);
+
+    // Call detection regex patterns - more comprehensive
     const callPatterns =
       file.language === 'python'
         ? [
-            /(?:await\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, // Regular function call
+            /(?:await\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, // function_name(
             /(?:await\s+)?self\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, // self.method()
-            /(?:await\s+)?([A-Z][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, // Class.method()
+            /(?:await\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g, // object.method()
           ]
         : [
-            /(?:await\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g, // Regular function call
+            /(?:await\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?:<[^>]+>)?\s*\(/g, // function_name( or fn<T>(
             /(?:await\s+)?this\.([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g, // this.method()
             /(?:await\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\.([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g, // object.method()
           ];
 
-    // For each function node, look for calls within its scope
-    for (const funcNode of functionNodes) {
+    // Extract calls from each callable node's scope
+    for (const funcNode of callableNodes) {
       const startLine = funcNode.source.line_start;
       const endLine = funcNode.source.line_end;
 
@@ -650,22 +669,15 @@ export class PatternMatcher {
         pattern.lastIndex = 0; // Reset regex state
         let match;
         while ((match = pattern.exec(scopeContent)) !== null) {
-          // Get the function name (last capture group)
+          // Get the function name (last capture group for object.method, first otherwise)
           const funcName = match[match.length - 1] || match[1];
 
-          // Skip common keywords and built-ins
-          const skipNames = new Set([
-            'if', 'for', 'while', 'with', 'return', 'print', 'len', 'str',
-            'int', 'float', 'list', 'dict', 'set', 'tuple', 'range', 'enumerate',
-            'zip', 'map', 'filter', 'sorted', 'reversed', 'type', 'isinstance',
-            'hasattr', 'getattr', 'setattr', 'super', 'open', 'Exception',
-            // TypeScript
-            'console', 'require', 'export', 'import', 'new', 'typeof', 'delete',
-            'Array', 'Object', 'String', 'Number', 'Boolean', 'Promise',
-            'Math', 'JSON', 'Date', 'Error', 'RegExp', 'Map', 'Set',
-          ]);
-
-          if (funcName && !skipNames.has(funcName) && funcName !== funcNode.name) {
+          if (
+            funcName &&
+            !skipKeywords.has(funcName) &&
+            funcName !== funcNode.name &&
+            funcName.length > 1 // Skip single-character names
+          ) {
             calledFunctions.add(funcName);
           }
         }
@@ -673,12 +685,8 @@ export class PatternMatcher {
 
       // Create CALLS edges
       for (const calledName of calledFunctions) {
-        // Try to resolve to a known function in this file
-        const targetNode = nodes.find(
-          (n) =>
-            (n.type === 'Function' || n.type === 'Method') &&
-            n.name === calledName
-        );
+        // Try to resolve to a known function/class in this file
+        const targetNode = callablesByName.get(calledName);
 
         edges.push({
           id: uuidv4(),
@@ -690,6 +698,48 @@ export class PatternMatcher {
             is_resolved: !!targetNode,
           },
           extraction: this.createExtractionMetadata(1, schemaName, targetNode ? 0.9 : 0.6),
+        });
+      }
+    }
+
+    // Also extract calls from Class bodies (e.g., static initialization, decorators)
+    for (const classNode of classNodes) {
+      const startLine = classNode.source.line_start;
+      const endLine = classNode.source.line_end;
+      const scopeContent = lines.slice(startLine - 1, endLine).join('\n');
+
+      // Look for method calls at class level (static initializers, property initializers)
+      const calledFunctions = new Set<string>();
+
+      for (const pattern of callPatterns) {
+        pattern.lastIndex = 0;
+        let match;
+        while ((match = pattern.exec(scopeContent)) !== null) {
+          const funcName = match[match.length - 1] || match[1];
+          if (
+            funcName &&
+            !skipKeywords.has(funcName) &&
+            funcName !== classNode.name &&
+            funcName.length > 1
+          ) {
+            calledFunctions.add(funcName);
+          }
+        }
+      }
+
+      for (const calledName of calledFunctions) {
+        const targetNode = callablesByName.get(calledName);
+        edges.push({
+          id: uuidv4(),
+          type: 'CALLS',
+          from_id: classNode.id,
+          to_id: targetNode?.id || calledName,
+          properties: {
+            target_name: calledName,
+            is_resolved: !!targetNode,
+            from_class_scope: true,
+          },
+          extraction: this.createExtractionMetadata(1, schemaName, targetNode ? 0.8 : 0.5),
         });
       }
     }

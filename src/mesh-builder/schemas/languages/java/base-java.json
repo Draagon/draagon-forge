@@ -185,6 +185,148 @@
           }
         }
       ]
+    },
+    "endpoints": {
+      "description": "Spring REST API endpoint annotations",
+      "patterns": [
+        {
+          "name": "request_mapping",
+          "regex": "^\\s*@RequestMapping\\s*\\((?:value\\s*=\\s*)?[\"']([^\"']+)[\"'](?:,\\s*method\\s*=\\s*RequestMethod\\.(\\w+))?",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 },
+            "http_method": { "group": 2, "default": "GET" }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "http_method",
+              "framework": "spring"
+            }
+          }
+        },
+        {
+          "name": "get_mapping",
+          "regex": "^\\s*@GetMapping\\s*\\((?:value\\s*=\\s*)?[\"']([^\"']+)[\"']",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "GET",
+              "framework": "spring"
+            }
+          }
+        },
+        {
+          "name": "get_mapping_simple",
+          "regex": "^\\s*@GetMapping\\s*\\([\"']([^\"']+)[\"']\\)",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "GET",
+              "framework": "spring"
+            }
+          }
+        },
+        {
+          "name": "post_mapping",
+          "regex": "^\\s*@PostMapping\\s*\\((?:value\\s*=\\s*)?[\"']([^\"']+)[\"']",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "POST",
+              "framework": "spring"
+            }
+          }
+        },
+        {
+          "name": "post_mapping_simple",
+          "regex": "^\\s*@PostMapping\\s*\\([\"']([^\"']+)[\"']\\)",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "POST",
+              "framework": "spring"
+            }
+          }
+        },
+        {
+          "name": "put_mapping",
+          "regex": "^\\s*@PutMapping\\s*\\((?:value\\s*=\\s*)?[\"']([^\"']+)[\"']",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "PUT",
+              "framework": "spring"
+            }
+          }
+        },
+        {
+          "name": "delete_mapping",
+          "regex": "^\\s*@DeleteMapping\\s*\\((?:value\\s*=\\s*)?[\"']([^\"']+)[\"']",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "DELETE",
+              "framework": "spring"
+            }
+          }
+        },
+        {
+          "name": "patch_mapping",
+          "regex": "^\\s*@PatchMapping\\s*\\((?:value\\s*=\\s*)?[\"']([^\"']+)[\"']",
+          "flags": "gm",
+          "captures": {
+            "path": { "group": 1 }
+          },
+          "node_template": {
+            "type": "Endpoint",
+            "name_from": "path",
+            "properties": {
+              "path": "path",
+              "http_method": "PATCH",
+              "framework": "spring"
+            }
+          }
+        }
+      ]
     }
   },
   "ai_hints": {
